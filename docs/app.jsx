@@ -1403,6 +1403,191 @@
     );
   }
 
+  // ============== Login / Sign-up screen ==============
+  // Shown at the start of every browser session before the launch hub.
+  // Two clear paths: LOG IN (use existing profile) or SIGN UP (create new one).
+  function LoginScreen({ onLoggedIn }) {
+    const [tab, setTab] = useState(() => {
+      try {
+        const list = JSON.parse(localStorage.getItem('sf_user_list_v1') || '[]');
+        // Default to Sign Up if no profiles exist yet.
+        return (Array.isArray(list) && list.length > 0) ? 'login' : 'signup';
+      } catch(e) { return 'signup'; }
+    });
+    return (
+      <div style={{
+        position:'fixed', inset:0, zIndex:100,
+        background: 'radial-gradient(ellipse at 50% 110%, var(--fire-1) 0%, transparent 55%), linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 55%, var(--bg-2) 100%)',
+        display:'grid', placeItems:'center', padding:24,
+      }}>
+        <div style={{ width:'min(460px, 94vw)', textAlign:'center' }}>
+          <div className="title-art" style={{ fontSize:'clamp(54px, 9vw, 110px)', lineHeight:.85, marginBottom:6 }}>
+            STICK<br/>SCHOLAR
+          </div>
+          <div className="title-sub" style={{ marginBottom:22 }}>welcome back, fighter</div>
+          {/* TWO BIG BUTTONS — Log In | Sign Up */}
+          <div style={{ display:'flex', gap:10, marginBottom:18, justifyContent:'center' }}>
+            <button onClick={() => setTab('login')}
+              className="btn"
+              style={{
+                background: tab === 'login'
+                  ? 'linear-gradient(180deg, var(--fire-2), var(--fire-1))'
+                  : 'rgba(0,0,0,.55)',
+                border: tab === 'login' ? 'none' : '2px solid var(--line-2)',
+                color: tab === 'login' ? '#fff' : 'var(--ink)',
+                padding:'14px 30px', fontSize:18, letterSpacing:'.1em',
+                flex:1, maxWidth:180,
+              }}>
+              LOG IN
+            </button>
+            <button onClick={() => setTab('signup')}
+              className="btn"
+              style={{
+                background: tab === 'signup'
+                  ? 'linear-gradient(180deg, var(--fire-2), var(--fire-1))'
+                  : 'rgba(0,0,0,.55)',
+                border: tab === 'signup' ? 'none' : '2px solid var(--line-2)',
+                color: tab === 'signup' ? '#fff' : 'var(--ink)',
+                padding:'14px 30px', fontSize:18, letterSpacing:'.1em',
+                flex:1, maxWidth:180,
+              }}>
+              SIGN UP
+            </button>
+          </div>
+          <div className="panel" style={{ padding:22 }}>
+            {tab === 'login' ? <LoginForm onLoggedIn={onLoggedIn}/> : <SignUpForm onLoggedIn={onLoggedIn}/>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function LoginForm({ onLoggedIn }) {
+    const users = D.listUsers();
+    const [pickedName, setPickedName] = useState(users[0] || '');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    function submit() {
+      if (!pickedName) { setError('Pick a profile'); return; }
+      const ok = D.verifyPassword(pickedName, password);
+      if (!ok) { setError('Wrong password'); return; }
+      D.setUser(pickedName);
+      try { sessionStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
+      onLoggedIn(pickedName);
+    }
+    if (users.length === 0) {
+      return (
+        <div style={{ textAlign:'center', color:'var(--ink-2)', padding:'18px 0' }}>
+          No saved profiles yet. Hit <strong>SIGN UP</strong> to create one.
+        </div>
+      );
+    }
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left' }}>USERNAME</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:160, overflowY:'auto' }}>
+          {users.map(u => (
+            <button key={u}
+              onClick={() => { setPickedName(u); setPassword(''); setError(''); }}
+              style={{
+                display:'flex', alignItems:'center', gap:10,
+                padding:'8px 12px', borderRadius:8, cursor:'pointer',
+                background: u === pickedName ? 'rgba(255,154,60,.18)' : 'rgba(255,255,255,.04)',
+                border: `1.5px solid ${u === pickedName ? 'var(--fire-2)' : 'var(--line)'}`,
+                color:'var(--ink)', fontFamily:'inherit',
+              }}>
+              <div style={{ width:30, height:30, borderRadius:'50%',
+                background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
+                display:'grid', placeItems:'center', color:'#fff',
+                fontFamily:"'Bebas Neue'", fontSize:16 }}>
+                {D.getAvatar(u) || u.slice(0,1).toUpperCase()}
+              </div>
+              <div style={{ flex:1, textAlign:'left', fontWeight:700 }}>{u}</div>
+              {D.hasPassword(u) && <span style={{ fontSize:11, color:'var(--ink-3)' }}>🔒</span>}
+            </button>
+          ))}
+        </div>
+        {pickedName && D.hasPassword(pickedName) && (
+          <>
+            <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left', marginTop:6 }}>PASSWORD</div>
+            <input type="password" value={password} autoFocus
+              placeholder="Password"
+              onChange={e => { setPassword(e.target.value); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              style={{ padding:'10px 14px', fontSize:14 }}/>
+          </>
+        )}
+        {error && (
+          <div style={{ color:'#ff8a9a', fontSize:12, textAlign:'center' }}>{error}</div>
+        )}
+        <button className="btn big" onClick={submit}
+          style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
+          ▶ LOG IN
+        </button>
+      </div>
+    );
+  }
+
+  function SignUpForm({ onLoggedIn }) {
+    const [name, setName] = useState('');
+    const [password, setPassword] = useState('');
+    const [avatar, setAvatar] = useState(null);
+    const [error, setError] = useState('');
+    const taken = name.trim() && D.userExists(name);
+    function submit() {
+      const clean = name.trim().slice(0, 20);
+      if (!clean) { setError('Pick a username'); return; }
+      if (D.userExists(clean)) { setError('Username already taken'); return; }
+      D.setUser(clean);                     // also writes it into the list
+      if (password) D.setPassword(clean, password);
+      if (avatar)   D.setAvatar(clean, avatar);
+      try { sessionStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
+      onLoggedIn(clean);
+    }
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left' }}>USERNAME</div>
+        <input type="text" maxLength={20} placeholder="Choose a username"
+          value={name}
+          onChange={e => { setName(e.target.value); setError(''); }}
+          style={{ padding:'10px 14px', fontSize:14,
+                   borderColor: taken ? '#ff5b6e' : undefined }}/>
+        {taken && (
+          <div style={{ color:'#ff8a9a', fontSize:12, textAlign:'left' }}>
+            Username already taken.
+          </div>
+        )}
+        <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left', marginTop:4 }}>
+          PASSWORD <span style={{ textTransform:'none', letterSpacing:0, color:'var(--ink-3)' }}>(optional)</span>
+        </div>
+        <input type="password" placeholder="Optional"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          style={{ padding:'10px 14px', fontSize:14 }}/>
+        <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left', marginTop:4 }}>AVATAR</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(8, 1fr)', gap:4 }}>
+          {D.AVATARS.slice(0, 16).map(emoji => (
+            <button key={emoji} onClick={() => setAvatar(emoji)}
+              style={{
+                aspectRatio:'1', fontSize:18, borderRadius:6,
+                background: avatar === emoji ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                border: `1.5px solid ${avatar === emoji ? 'var(--fire-2)' : 'var(--line)'}`,
+                cursor:'pointer',
+              }}>{emoji}</button>
+          ))}
+        </div>
+        {error && !taken && (
+          <div style={{ color:'#ff8a9a', fontSize:12, textAlign:'center' }}>{error}</div>
+        )}
+        <button className="btn big" onClick={submit} disabled={!name.trim() || taken}
+          style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
+          ▶ CREATE ACCOUNT
+        </button>
+      </div>
+    );
+  }
+
   // ============== top-level App ==============
   function App() {
     const [stage, setStage] = useState('launch'); // launch | lobby | arena | question | draft | results
@@ -1422,10 +1607,14 @@
     const [showCrates, setShowCrates] = useState(false);
     const [showCodes, setShowCodes] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
-    // Auto-open the profile picker on the first launch ever (no user list
-    // saved yet). Skips for returning users who already have a profile.
-    const [showProfile, setShowProfile] = useState(() => {
-      try { return !localStorage.getItem('sf_user_list_v1'); } catch(e) { return false; }
+    const [showProfile, setShowProfile] = useState(false);
+    // First-run login gate: any session where the user hasn't explicitly logged
+    // in shows the LoginScreen first. Cleared once they pick LOG IN or SIGN UP.
+    const [needLogin, setNeedLogin] = useState(() => {
+      try {
+        // Returning users (have a saved list) must explicitly Log In this session.
+        return !sessionStorage.getItem('sf_logged_in_v1');
+      } catch(e) { return true; }
     });
     const [tradeFriend, setTradeFriend] = useState(null); // friend object or null = chooser
     const [showTrade, setShowTrade] = useState(false);
@@ -1567,6 +1756,17 @@
       return () => window.removeEventListener('keydown', onKey);
     }, [stage]);
 
+    // Pre-launch gate: must Log In or Sign Up before the hub appears.
+    if (needLogin) {
+      return (
+        <LoginScreen onLoggedIn={(name) => {
+          setActiveUser(name);
+          refreshCoins();
+          setNeedLogin(false);
+        }} />
+      );
+    }
+
     return (
       <>
         {stage === 'launch' && <LaunchBackground />}
@@ -1690,6 +1890,12 @@
               setActiveUser(D.getUser());
               refreshCoins();
               // Force friends + owned panels to refresh by closing modal.
+            }}
+            onLogout={() => {
+              try { sessionStorage.removeItem('sf_logged_in_v1'); } catch(e){}
+              setShowProfile(false);
+              setNeedLogin(true);
+              setStage('launch');
             }} />
         )}
         {showFriends && (
@@ -2235,7 +2441,7 @@
     );
   }
 
-  function ProfileModal({ onClose, onSwitch }) {
+  function ProfileModal({ onClose, onSwitch, onLogout }) {
     const [active, setActive] = useState(D.getUser());
     const [newName, setNewName] = useState('');
     const [newPw, setNewPw] = useState('');
@@ -2360,6 +2566,17 @@
               Local-only (not real account security). Leave blank + Save to remove password.
             </div>
           </div>
+
+          {/* Quick Log Out — kicks back to the login screen. */}
+          {onLogout && (
+            <div style={{ marginBottom:10, textAlign:'right' }}>
+              <button className="btn sm ghost" onClick={onLogout}
+                style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                <Icon id="back" size={12} style={{verticalAlign:'middle', marginRight:6}}/>
+                Log Out
+              </button>
+            </div>
+          )}
 
           {/* Switcher */}
           <div className="section-card" style={{ marginBottom:10 }}>

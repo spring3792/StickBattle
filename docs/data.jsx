@@ -98,6 +98,12 @@ window.GameData = (function () {
       return list;
     } catch (e) { return [getUser()]; }
   }
+  // Case-insensitive existence check — used by sign-up to block dup usernames.
+  function userExists(name) {
+    const clean = (name || '').trim().toLowerCase();
+    if (!clean) return false;
+    return listUsers().some(n => n.toLowerCase() === clean);
+  }
   function deleteUser(name) {
     try {
       const list = (JSON.parse(localStorage.getItem(LS_USER_LIST) || '[]') || []).filter(n => n !== name);
@@ -595,7 +601,7 @@ window.GameData = (function () {
     getFriends, addFriend, removeFriend, friendIsOnline,
     getTrades, executeTrade,
     // accounts
-    getUser, setUser, listUsers, deleteUser, DEFAULT_USER,
+    getUser, setUser, listUsers, userExists, deleteUser, DEFAULT_USER,
     AVATARS, getAvatar, setAvatar,
     setPassword, hasPassword, verifyPassword,
   };
