@@ -65,28 +65,77 @@ window.GameData = (function () {
     legendary: '#ffb547',
   };
 
+  // ---------- ACCOUNTS / LOCAL PROFILES ----------
+  // Lightweight "account" system. Each profile is just a username; we namespace
+  // the per-profile localStorage keys with it. The legacy default (no profile
+  // picked / "Player1") uses the bare keys so existing progress isn't wiped.
+  const LS_USER       = 'sf_user_v1';
+  const LS_USER_LIST  = 'sf_user_list_v1';
+  const DEFAULT_USER  = 'Player1';
+  function getUser() {
+    try { return (localStorage.getItem(LS_USER) || DEFAULT_USER).slice(0, 20); }
+    catch (e) { return DEFAULT_USER; }
+  }
+  function setUser(name) {
+    const clean = (name || DEFAULT_USER).trim().slice(0, 20) || DEFAULT_USER;
+    localStorage.setItem(LS_USER, clean);
+    // Track in user list for the switcher UI.
+    try {
+      const list = JSON.parse(localStorage.getItem(LS_USER_LIST) || '[]');
+      if (!list.includes(clean)) {
+        list.push(clean);
+        localStorage.setItem(LS_USER_LIST, JSON.stringify(list));
+      }
+    } catch(e){}
+    return clean;
+  }
+  function listUsers() {
+    try {
+      const list = JSON.parse(localStorage.getItem(LS_USER_LIST) || '[]');
+      // Always include the active one.
+      const u = getUser();
+      if (!list.includes(u)) list.push(u);
+      return list;
+    } catch (e) { return [getUser()]; }
+  }
+  function deleteUser(name) {
+    try {
+      const list = (JSON.parse(localStorage.getItem(LS_USER_LIST) || '[]') || []).filter(n => n !== name);
+      localStorage.setItem(LS_USER_LIST, JSON.stringify(list));
+      // Wipe namespaced keys for that user.
+      ['sf_coins_v1','sf_owned_v1','sf_friends_v1','sf_trades_v1','sf_redeemed_v1']
+        .forEach(k => localStorage.removeItem(k + '__' + name));
+    } catch(e){}
+  }
+  // Namespace helper: default user uses bare keys (so existing progress
+  // is preserved), other users get a per-user suffix.
+  function ns(key) {
+    const u = getUser();
+    return u === DEFAULT_USER ? key : `${key}__${u}`;
+  }
+
   // ---------- WALLET / OWNERSHIP (localStorage-backed) ----------
   const LS_COINS = 'sf_coins_v1';
   const LS_OWNED = 'sf_owned_v1';
   function getCoins() {
     if (localStorage.getItem('sf_admin_v1') === '1') return 999999999;
-    const v = parseInt(localStorage.getItem(LS_COINS) || '', 10);
+    const v = parseInt(localStorage.getItem(ns(LS_COINS)) || '', 10);
     return Number.isFinite(v) ? v : 250; // starter balance
   }
-  function setCoins(v) { localStorage.setItem(LS_COINS, String(Math.max(0, v|0))); }
+  function setCoins(v) { localStorage.setItem(ns(LS_COINS), String(Math.max(0, v|0))); }
   function addCoins(delta) {
     if (localStorage.getItem('sf_admin_v1') === '1') return getCoins();
-    const v = parseInt(localStorage.getItem(LS_COINS) || '', 10);
+    const v = parseInt(localStorage.getItem(ns(LS_COINS)) || '', 10);
     const cur = Number.isFinite(v) ? v : 250;
     const next = cur + (delta|0);
     setCoins(next);
     return next;
   }
   function getOwned() {
-    try { return new Set(JSON.parse(localStorage.getItem(LS_OWNED) || '[]')); }
+    try { return new Set(JSON.parse(localStorage.getItem(ns(LS_OWNED)) || '[]')); }
     catch (e) { return new Set(); }
   }
-  function setOwned(set) { localStorage.setItem(LS_OWNED, JSON.stringify([...set])); }
+  function setOwned(set) { localStorage.setItem(ns(LS_OWNED), JSON.stringify([...set])); }
   function ownItem(kind, id) {
     const o = getOwned();
     o.add(`${kind}:${id}`);
@@ -117,12 +166,12 @@ window.GameData = (function () {
     else localStorage.removeItem(LS_ADMIN);
   }
   function getRedeemed() {
-    try { return new Set(JSON.parse(localStorage.getItem(LS_REDEEMED) || '[]')); }
+    try { return new Set(JSON.parse(localStorage.getItem(ns(LS_REDEEMED)) || '[]')); }
     catch (e) { return new Set(); }
   }
   function markRedeemed(code) {
     const r = getRedeemed(); r.add(code);
-    localStorage.setItem(LS_REDEEMED, JSON.stringify([...r]));
+    localStorage.setItem(ns(LS_REDEEMED), JSON.stringify([...r]));
   }
   // Returns { ok, msg } describing the redemption.
   function redeemCode(rawInput) {
@@ -150,10 +199,10 @@ window.GameData = (function () {
   const LS_TRADES  = 'sf_trades_v1';
 
   function getFriends() {
-    try { return JSON.parse(localStorage.getItem(LS_FRIENDS) || '[]'); }
+    try { return JSON.parse(localStorage.getItem(ns(LS_FRIENDS)) || '[]'); }
     catch (e) { return []; }
   }
-  function saveFriends(arr) { localStorage.setItem(LS_FRIENDS, JSON.stringify(arr)); }
+  function saveFriends(arr) { localStorage.setItem(ns(LS_FRIENDS), JSON.stringify(arr)); }
   function addFriend(name) {
     name = (name || '').trim().slice(0, 18);
     if (!name) return { ok:false, msg:'Enter a name' };
@@ -181,13 +230,13 @@ window.GameData = (function () {
   }
 
   function getTrades() {
-    try { return JSON.parse(localStorage.getItem(LS_TRADES) || '[]'); }
+    try { return JSON.parse(localStorage.getItem(ns(LS_TRADES)) || '[]'); }
     catch (e) { return []; }
   }
   function recordTrade(trade) {
     const list = getTrades();
     list.unshift({ ...trade, at: Date.now() });
-    localStorage.setItem(LS_TRADES, JSON.stringify(list.slice(0, 50)));
+    localStorage.setItem(ns(LS_TRADES), JSON.stringify(list.slice(0, 50)));
   }
   // Trade: give one owned item, receive a random matching-rarity item from
   // friend's "pool". For the mock implementation, the friend's pool is the
@@ -487,5 +536,7 @@ window.GameData = (function () {
     // friends + trading
     getFriends, addFriend, removeFriend, friendIsOnline,
     getTrades, executeTrade,
+    // accounts
+    getUser, setUser, listUsers, deleteUser, DEFAULT_USER,
   };
 })();

@@ -111,7 +111,7 @@
   }
 
   // ============== launch screen (revamped) ==============
-  function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onPreviewSet, coins }) {
+  function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onPreviewSet, coins }) {
     const title = D.eduTitle(settings.edu);
     const sub = D.eduSub(settings.edu);
     const allSets = Q.allSets();
@@ -132,6 +132,7 @@
           onPlay={onPlay} onCreateSet={onCreateSet} onDeleteSet={onDeleteSet}
           onOpenSettings={onOpenSettings} onOpenCrates={onOpenCrates}
           onOpenCodes={onOpenCodes} onOpenFriends={onOpenFriends}
+          onOpenProfile={onOpenProfile}
           onOpenTrade={onOpenTrade} onPreviewSet={onPreviewSet} />
       </div>
     );
@@ -141,7 +142,7 @@
   function NewLaunchUI({ settings, onChange, coins, title, sub, selectedMode,
     readyModes, soonModes, allSets, activeSet,
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
-    onOpenFriends, onOpenTrade, onPreviewSet }) {
+    onOpenFriends, onOpenTrade, onOpenProfile, onPreviewSet }) {
     // Chip helper — icon only on narrow, icon+label otherwise
     const Chip = ({ icon, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
@@ -178,6 +179,7 @@
             }}>
               <Icon id="coin" size={14} color="#ffd76a"/> {coins.toLocaleString()}
             </span>
+            <Chip icon="friend"   label={D.getUser()} onClick={onOpenProfile} color="#a07bff"/>
             <Chip icon="gift"     label="Crates"   onClick={onOpenCrates}    color="#ff9a3c" glow/>
             <Chip icon="users"    label="Friends"  onClick={onOpenFriends}   color="#7bff8a"/>
             <Chip icon="trade"    label="Trade"    onClick={onOpenTrade}     color="#ffd84a"/>
@@ -300,15 +302,35 @@
               </div>
             </div>
             {settings.mode === 'td' && (
-              <div className="section-card" style={{ margin:0 }}>
-                <div className="sc-h">Endless TD</div>
-                <button onClick={() => onChange({ ...settings, tdEndless: !settings.tdEndless })}
-                  className={`pill ${settings.tdEndless ? 'on' : ''}`}
-                  style={{ border:'none', cursor:'pointer', gap:6 }}>
-                  <Icon id={settings.tdEndless ? 'check' : 'x'} size={14}/>
-                  {settings.tdEndless ? 'ON · Waves never end' : 'OFF · 7-wave campaign'}
-                </button>
-              </div>
+              <React.Fragment>
+                <div className="section-card" style={{ margin:0 }}>
+                  <div className="sc-h">TD Map</div>
+                  <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+                    <button onClick={() => onChange({ ...settings, tdMapId: 'random' })}
+                      className={`pill ${(settings.tdMapId || 'random') === 'random' ? 'on' : ''}`}
+                      style={{ border:'none', cursor:'pointer', gap:6 }}>
+                      <Icon id="sparkle" size={12}/> Random
+                    </button>
+                    {(G.TD_PATH_IDS || []).map(id => (
+                      <button key={id}
+                        onClick={() => onChange({ ...settings, tdMapId: id })}
+                        className={`pill ${settings.tdMapId === id ? 'on' : ''}`}
+                        style={{ border:'none', cursor:'pointer', gap:6, textTransform:'uppercase' }}>
+                        {id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="section-card" style={{ margin:0 }}>
+                  <div className="sc-h">Endless TD</div>
+                  <button onClick={() => onChange({ ...settings, tdEndless: !settings.tdEndless })}
+                    className={`pill ${settings.tdEndless ? 'on' : ''}`}
+                    style={{ border:'none', cursor:'pointer', gap:6 }}>
+                    <Icon id={settings.tdEndless ? 'check' : 'x'} size={14}/>
+                    {settings.tdEndless ? 'ON · Waves never end' : 'OFF · 7-wave campaign'}
+                  </button>
+                </div>
+              </React.Fragment>
             )}
             {settings.players === '1v1bot' && (
               <div className="section-card" style={{ margin:0 }}>
@@ -941,7 +963,7 @@
   }
 
   // ============== arena ==============
-  function Arena({ profiles, edu, mode, botDifficulty, stageId, tdEndless, paused, onRoundEnd }) {
+  function Arena({ profiles, edu, mode, botDifficulty, stageId, tdEndless, tdMapId, paused, onRoundEnd }) {
     const stage = useMemo(() => {
       if (stageId && stageId !== 'random') {
         const found = D.STAGES.find(s => s.id === stageId);
@@ -950,10 +972,12 @@
       return D.STAGES[Math.floor(Math.random()*D.STAGES.length)];
     }, [stageId]);
     const modeLabel = (D.MODES.find(m => m.id === mode) || {}).name || 'Stick Fight';
+    const mapPicked = tdMapId && tdMapId !== 'random' ? tdMapId : null;
     return (
       <div className="center" style={{ padding:14 }}>
         <G.Component players={profiles} stage={stage} edu={edu} mode={mode}
-          botDifficulty={botDifficulty} tdEndless={tdEndless} paused={paused} onRoundEnd={onRoundEnd} />
+          botDifficulty={botDifficulty} tdEndless={tdEndless} tdMapId={mapPicked}
+          paused={paused} onRoundEnd={onRoundEnd} />
         <div style={{ marginTop: 10, fontSize:12, color:'var(--ink-3)', letterSpacing:'.1em', textTransform:'uppercase' }}>
           {modeLabel} · {stage.name} · First to {profiles[0]._target || 5}
         </div>
@@ -1295,10 +1319,16 @@
     const [showCrates, setShowCrates] = useState(false);
     const [showCodes, setShowCodes] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
+    // Auto-open the profile picker on the first launch ever (no user list
+    // saved yet). Skips for returning users who already have a profile.
+    const [showProfile, setShowProfile] = useState(() => {
+      try { return !localStorage.getItem('sf_user_list_v1'); } catch(e) { return false; }
+    });
     const [tradeFriend, setTradeFriend] = useState(null); // friend object or null = chooser
     const [showTrade, setShowTrade] = useState(false);
     const [previewSet, setPreviewSet] = useState(null);
     const [coins, setCoinsState] = useState(D.getCoins());
+    const [activeUser, setActiveUser] = useState(D.getUser());
     const refreshCoins = () => setCoinsState(D.getCoins());
 
     // edu-mode question state
@@ -1441,10 +1471,12 @@
 
         {stage === 'launch' && (
           <LaunchScreen
+            key={activeUser}
             settings={settings}
             onChange={setSettings}
             onPlay={startLobby}
             coins={coins}
+            onOpenProfile={() => setShowProfile(true)}
             onOpenCrates={() => setShowCrates(true)}
             onOpenCodes={() => setShowCodes(true)}
             onOpenFriends={() => setShowFriends(true)}
@@ -1471,6 +1503,7 @@
                  mode={settings.mode}
                  stageId={settings.stageId}
                  tdEndless={settings.tdEndless}
+                 tdMapId={settings.tdMapId}
                  botDifficulty={settings.botDifficulty}
                  paused={confirmQuit}
                  onRoundEnd={onRoundEnd} />
@@ -1547,6 +1580,14 @@
         )}
         {showCodes && (
           <CodesModal onClose={() => setShowCodes(false)} onCoinsChanged={refreshCoins} />
+        )}
+        {showProfile && (
+          <ProfileModal onClose={() => setShowProfile(false)}
+            onSwitch={() => {
+              setActiveUser(D.getUser());
+              refreshCoins();
+              // Force friends + owned panels to refresh by closing modal.
+            }} />
         )}
         {showFriends && (
           <FriendsModal onClose={() => setShowFriends(false)}
@@ -2074,6 +2115,111 @@
           </div>
         </div>
       </ModalShell>
+    );
+  }
+
+  function ProfileModal({ onClose, onSwitch }) {
+    const [active, setActive] = useState(D.getUser());
+    const [newName, setNewName] = useState('');
+    const users = D.listUsers();
+    function pickUser(name) {
+      D.setUser(name);
+      setActive(name);
+      onSwitch && onSwitch();
+    }
+    function createUser() {
+      const clean = (newName || '').trim().slice(0, 20);
+      if (!clean) return;
+      D.setUser(clean);
+      setActive(clean);
+      setNewName('');
+      onSwitch && onSwitch();
+    }
+    function removeUser(name) {
+      if (name === active) return;
+      if (!confirm(`Delete profile "${name}" and all of its progress?`)) return;
+      D.deleteUser(name);
+      // Force re-render
+      setActive(D.getUser());
+    }
+    return (
+      <div style={{ position:'fixed', inset:0, zIndex:50,
+        background:'rgba(0,0,0,.6)', display:'grid', placeItems:'center', backdropFilter:'blur(4px)' }}>
+        <div className="panel" style={{ width:'min(520px,92vw)' }}>
+          <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div>
+              <div className="title-art" style={{ fontSize:'clamp(28px,3.4vw,42px)', lineHeight:1 }}>PROFILES</div>
+              <div style={{ color:'var(--ink-2)', fontSize:13, marginTop:4 }}>
+                Each profile keeps its own coins, owned cosmetics, friends, and trades.
+              </div>
+            </div>
+            <button className="btn ghost sm" onClick={onClose}>
+              <Icon id="x" size={14}/>
+            </button>
+          </div>
+          <div className="section-card" style={{ marginBottom:10 }}>
+            <div className="sc-h">Active</div>
+            <div className="row" style={{ gap:10, alignItems:'center' }}>
+              <div style={{ width:44, height:44, borderRadius:'50%',
+                background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
+                display:'grid', placeItems:'center', color:'#fff',
+                fontFamily:"'Bebas Neue'", fontSize:24 }}>
+                {(active || '?').slice(0,1).toUpperCase()}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:800, fontSize:18 }}>{active}</div>
+                <div style={{ fontSize:11, color:'var(--ink-3)' }}>
+                  {D.getCoins().toLocaleString()} coins · {D.getOwned().size} owned · {D.getFriends().length} friends
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="section-card" style={{ marginBottom:10 }}>
+            <div className="sc-h">Switch profile</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {users.map(u => (
+                <div key={u} className="row" style={{ gap:8, alignItems:'center',
+                  padding:'6px 10px', background: u === active ? 'rgba(255,154,60,.15)' : 'rgba(255,255,255,.04)',
+                  border:`1px solid ${u === active ? 'var(--fire-2)' : 'var(--line)'}`,
+                  borderRadius:8 }}>
+                  <div style={{ width:32, height:32, borderRadius:'50%',
+                    background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
+                    display:'grid', placeItems:'center', color:'#fff',
+                    fontFamily:"'Bebas Neue'", fontSize:18 }}>
+                    {u.slice(0,1).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, fontWeight:600 }}>{u}</div>
+                  {u !== active && (
+                    <button className="btn sm" onClick={() => pickUser(u)}>Use</button>
+                  )}
+                  {u !== active && users.length > 1 && (
+                    <button className="btn sm ghost" onClick={() => removeUser(u)}
+                      style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                      <Icon id="x" size={12}/>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="section-card" style={{ marginBottom:0 }}>
+            <div className="sc-h">Create new profile</div>
+            <div className="row" style={{ gap:8 }}>
+              <input type="text" placeholder="Username (max 20 chars)" value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createUser()}
+                maxLength={20}
+                style={{ flex:1 }}/>
+              <button className="btn sm" disabled={!newName.trim()} onClick={createUser}>
+                <Icon id="check" size={12}/> Create + use
+              </button>
+            </div>
+            <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
+              New profiles start with 250 coins and the starter cosmetics.
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 

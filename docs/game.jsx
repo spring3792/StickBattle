@@ -242,7 +242,7 @@ window.StickFightGame = (function () {
   }
 
   // ---------- main React component ----------
-  function StickFightCanvas({ players, stage, edu, mode, botDifficulty, tdEndless, paused, onRoundEnd }) {
+  function StickFightCanvas({ players, stage, edu, mode, botDifficulty, tdEndless, tdMapId, paused, onRoundEnd }) {
     const canvasRef = useRef(null);
     const stateRef = useRef(null);
     const rafRef = useRef(0);
@@ -374,7 +374,7 @@ window.StickFightGame = (function () {
 
       // ----- TOWER DEFENSE (TOP-DOWN, path-based) -----
       if (state.mode === 'td') {
-        const path = tdGenPath();
+        const path = tdGenPath(tdMapId);
         state.td = {
           path,
           pathId: path._id || 'zigzag',
@@ -441,7 +441,12 @@ window.StickFightGame = (function () {
           // 4. Place a new tower
           if (tdUpgradePanelClick(st, pt.x, pt.y)) return;
           const existing = tdTowerAt(st, pt.x, pt.y);
-          if (existing) { st.td.selectedTower = existing; return; }
+          if (existing) {
+            // Click the SAME tower again → deselect (toggle off).
+            if (st.td.selectedTower === existing) st.td.selectedTower = null;
+            else st.td.selectedTower = existing;
+            return;
+          }
           if (tdSelectTowerAt(st, pt.x, pt.y)) { st.td.selectedTower = null; return; }
           // Clicking empty grass: deselect or place
           if (st.td.selectedTower) { st.td.selectedTower = null; return; }
@@ -816,9 +821,13 @@ window.StickFightGame = (function () {
         const e = td.enemies[i];
         if (e.slowFor > 0) { e.slowFor--; }
         const speedFactor = e.slowFor > 0 ? (e.slowFactor || 0.6) : 1;
+        // Store previous position so we can derive a facing direction for the
+        // walking animation (positive vx = facing right).
+        const prevX = e.x, prevY = e.y;
         e.t += e.speed * speedFactor;
         const pt = pointOnPath(td.path, e.t);
         e.x = pt.x; e.y = pt.y;
+        if (prevX !== undefined) { e.vx = e.x - prevX; e.vy = e.y - prevY; }
         if (pt.done) {
           td.enemies.splice(i, 1);
           td.baseHp--;
@@ -1697,9 +1706,11 @@ window.StickFightGame = (function () {
     ],
   };
   const TD_PATH_IDS = Object.keys(TD_PATHS);
-  function tdGenPath() {
-    // Random map every match — gives the game-play variety with no UI work.
-    const id = TD_PATH_IDS[Math.floor(Math.random() * TD_PATH_IDS.length)];
+  function tdGenPath(forceId) {
+    // Use the picked map if specified, otherwise random.
+    const id = (forceId && TD_PATHS[forceId])
+      ? forceId
+      : TD_PATH_IDS[Math.floor(Math.random() * TD_PATH_IDS.length)];
     const wp = TD_PATHS[id].map(p => ({ ...p }));
     wp._id = id;
     return wp;
@@ -2397,6 +2408,326 @@ window.StickFightGame = (function () {
     }
   }
 
+  // Draw a single TD tower as a stickman holding a weapon distinctive to the
+  // tower kind. The little fellow stands on a stone tile, gets a level pip on
+  // his head, and faces toward the nearest enemy when one is in range.
+  function drawTowerStickman(ctx, t, state) {
+    // -- helpers --
+    // Stickman dimensions (small fighter)
+    const cx = t.x, gy = t.y + 12; // ground level under the figure
+    const kind = (t.kindId || 'basic');
+    // Find facing direction (track nearest enemy in range)
+    let face = 1;
+    if (state.td) {
+      let best = Infinity, bx = null;
+      for (const e of state.td.enemies) {
+        const d = Math.hypot(e.x - cx, e.y - (gy - 20));
+        if (d <= t.range && d < best) { best = d; bx = e.x; }
+      }
+      if (bx !== null) face = bx >= cx ? 1 : -1;
+    }
+    // Idle bob — head/body sway gently per tower (different phase per tower).
+    const bob = Math.sin(state.frame * 0.06 + (t.x + t.y) * 0.01) * 1.2;
+
+    // -- drop shadow + ground tile --
+    ctx.fillStyle = 'rgba(0,0,0,.4)';
+    ctx.beginPath(); ctx.ellipse(cx + 1, gy + 6, 16, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#cda36a';
+    ctx.beginPath(); ctx.arc(cx, gy + 4, 20, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#8a6634'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(cx, gy + 4, 20, 0, Math.PI*2); ctx.stroke();
+    // tile detail (3 small grass tufts)
+    ctx.fillStyle = '#6a8a3a';
+    ctx.beginPath(); ctx.arc(cx - 12, gy + 8, 1.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 11, gy + 9, 1.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 4, gy + 11, 1.4, 0, Math.PI*2); ctx.fill();
+
+    // -- skin/outfit color depends on tower kind --
+    const tinted = t.color || '#c9a25f';
+    const dark = '#1a1622';
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+    // -- body --
+    const headR = 5;
+    const headY = gy - 26 + bob;
+    const torsoTop = headY + headR;
+    const torsoBot = gy - 4;
+    ctx.strokeStyle = tinted; ctx.lineWidth = 2.8;
+    // torso
+    ctx.beginPath();
+    ctx.moveTo(cx, torsoTop);
+    ctx.lineTo(cx, torsoBot);
+    ctx.stroke();
+    // legs (slight stance)
+    ctx.beginPath();
+    ctx.moveTo(cx, torsoBot);
+    ctx.lineTo(cx - 4, gy + 3);
+    ctx.moveTo(cx, torsoBot);
+    ctx.lineTo(cx + 4, gy + 3);
+    ctx.stroke();
+    // head
+    ctx.fillStyle = tinted;
+    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.stroke();
+    // eyes (face direction)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(cx + face * 1.4, headY - 0.6, 1.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + face * 1.4 + 1.4, headY - 0.6, 1.1, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.beginPath(); ctx.arc(cx + face * 1.6, headY - 0.6, 0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + face * 1.6 + 1.4, headY - 0.6, 0.5, 0, Math.PI*2); ctx.fill();
+
+    // -- arms + weapon (varies by kind) --
+    const shoulderY = torsoTop + 4;
+    ctx.strokeStyle = tinted; ctx.lineWidth = 2.4;
+
+    if (kind === 'basic') {
+      // ARCHER: arms raised holding a bow horizontally facing forward.
+      const hx = cx + face * 9;
+      const hy = shoulderY + 2;
+      // arms
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(hx - face * 2, hy + 1);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(hx, hy - 3);
+      ctx.stroke();
+      // bow (vertical arc)
+      ctx.strokeStyle = '#8a5028'; ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(hx + face * 1, hy, 9, Math.PI * 0.65 * face, Math.PI * 1.35 * face, face < 0);
+      ctx.stroke();
+      // bowstring
+      ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx + face * 1, hy - 8.2);
+      ctx.lineTo(hx + face * 1, hy + 8.2);
+      ctx.stroke();
+      // arrow nocked, pointing forward
+      ctx.strokeStyle = '#a06030'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(hx + face * 1, hy);
+      ctx.lineTo(hx + face * 9, hy);
+      ctx.stroke();
+      // arrowhead
+      ctx.fillStyle = '#cfd6e8';
+      ctx.beginPath();
+      ctx.moveTo(hx + face * 9, hy - 2);
+      ctx.lineTo(hx + face * 12, hy);
+      ctx.lineTo(hx + face * 9, hy + 2);
+      ctx.closePath(); ctx.fill();
+
+    } else if (kind === 'sniper') {
+      // SNIPER: prone stance with long rifle pointing forward.
+      // Replace legs with prone body
+      ctx.strokeStyle = tinted; ctx.lineWidth = 2.4;
+      // arms hugging rifle
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY + 4);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 9, shoulderY + 1);
+      ctx.stroke();
+      // rifle (long barrel)
+      ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(cx - face * 2, shoulderY + 2);
+      ctx.lineTo(cx + face * 16, shoulderY + 2);
+      ctx.stroke();
+      // scope dot
+      ctx.fillStyle = '#5bff8a';
+      ctx.beginPath(); ctx.arc(cx + face * 4, shoulderY - 1, 1.6, 0, Math.PI*2); ctx.fill();
+      // muzzle flash hint
+      ctx.fillStyle = '#ffdd55';
+      ctx.beginPath(); ctx.arc(cx + face * 16, shoulderY + 2, 1.2, 0, Math.PI*2); ctx.fill();
+
+    } else if (kind === 'cannon') {
+      // CANNON: stickman standing next to a small cannon on wheels.
+      // Arms holding lit fuse
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 7, shoulderY + 4);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY + 6);
+      ctx.stroke();
+      // cannon to the side
+      const cx2 = cx + face * 11;
+      ctx.fillStyle = '#1a1a22';
+      ctx.beginPath(); ctx.arc(cx2 - 3, gy + 2, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx2 + 3, gy + 2, 3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#3a2a18';
+      ctx.fillRect(cx2 - 5, gy - 4, 10, 6);
+      // barrel
+      ctx.fillStyle = '#2a2a32';
+      ctx.fillRect(cx2 + (face < 0 ? -10 : 0), gy - 8, 10, 6);
+      ctx.fillStyle = '#1a1a22';
+      ctx.beginPath(); ctx.arc(cx2 + face * 10, gy - 5, 2.5, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#ff9a3c'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx2 + face * 10, gy - 5, 2.5, 0, Math.PI*2); ctx.stroke();
+
+    } else if (kind === 'frost') {
+      // FROST: wizard stickman with staff topped by a snowflake.
+      // arms holding staff
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 5, shoulderY + 8);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY - 2);
+      ctx.stroke();
+      // staff
+      ctx.strokeStyle = '#5a3a14'; ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(cx + face * 6, gy + 2);
+      ctx.lineTo(cx + face * 6, headY - 6);
+      ctx.stroke();
+      // snowflake atop
+      const sx = cx + face * 6, sy = headY - 10;
+      ctx.strokeStyle = '#a5f3ff'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+      ctx.shadowColor = '#a5f3ff'; ctx.shadowBlur = 6;
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + Math.cos(a) * 5, sy + Math.sin(a) * 5);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(sx, sy, 1.6, 0, Math.PI*2); ctx.fill();
+      // wizard hat
+      ctx.fillStyle = '#1a2a5a';
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, headY - headR + 1);
+      ctx.lineTo(cx, headY - 16);
+      ctx.lineTo(cx + 6, headY - headR + 1);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffd84a';
+      ctx.beginPath(); ctx.arc(cx, headY - 11, 1, 0, Math.PI*2); ctx.fill();
+
+    } else if (kind === 'laser') {
+      // LASER: stickman aiming a futuristic ray gun forward (beam handled elsewhere).
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 7, shoulderY + 3);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 8, shoulderY - 1);
+      ctx.stroke();
+      // gun body
+      ctx.fillStyle = '#2a2a32';
+      ctx.fillRect(cx + (face < 0 ? -12 : 4), shoulderY - 1, 8, 4);
+      // emitter dot
+      ctx.fillStyle = t.turret || '#a5f3ff';
+      ctx.beginPath(); ctx.arc(cx + face * 13, shoulderY + 1, 2, 0, Math.PI*2); ctx.fill();
+      ctx.shadowColor = t.turret || '#a5f3ff'; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(cx + face * 13, shoulderY + 1, 1.4, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // beam to target
+      if (t._beamTarget) {
+        ctx.shadowColor = t.turret; ctx.shadowBlur = 12;
+        ctx.strokeStyle = t.turret; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx + face * 13, shoulderY + 1); ctx.lineTo(t._beamTarget.x, t._beamTarget.y); ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(cx + face * 13, shoulderY + 1); ctx.lineTo(t._beamTarget.x, t._beamTarget.y); ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+    } else if (kind === 'tesla') {
+      // TESLA: stickman holding an electric coil above his head.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - 5, headY - 8);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + 5, headY - 8);
+      ctx.stroke();
+      // coil disk
+      const dx = cx, dy = headY - 12;
+      ctx.fillStyle = '#5a3a14';
+      ctx.beginPath(); ctx.ellipse(dx, dy + 2, 7, 2, 0, 0, Math.PI*2); ctx.fill();
+      // arcing electricity
+      const arc = state.frame * 0.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.shadowColor = t.turret || '#7bbbff'; ctx.shadowBlur = 8;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(dx - 6, dy);
+      for (let s = 1; s <= 5; s++) {
+        const k = s / 5;
+        const mx = dx - 6 + 12 * k + (Math.random() - 0.5) * 4;
+        const my = dy - 6 - Math.sin(arc + s) * 4;
+        ctx.lineTo(mx, my);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+    } else if (kind === 'poison') {
+      // POISON: stickman holding a green vial high.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 4, headY - 4);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 5, shoulderY + 5);
+      ctx.stroke();
+      // vial
+      const vx = cx + face * 6, vy = headY - 6;
+      ctx.fillStyle = '#1a3a1a';
+      ctx.fillRect(vx - 2, vy - 4, 4, 2);
+      ctx.fillStyle = t.turret || '#7bff5a';
+      ctx.beginPath();
+      ctx.moveTo(vx - 3, vy - 2);
+      ctx.lineTo(vx + 3, vy - 2);
+      ctx.lineTo(vx + 4, vy + 6);
+      ctx.lineTo(vx - 4, vy + 6);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#2a5a1a'; ctx.lineWidth = 0.8; ctx.stroke();
+      // bubble pop
+      const bub = (state.frame * 0.1) % 1;
+      ctx.fillStyle = 'rgba(255,255,255,.65)';
+      ctx.beginPath(); ctx.arc(vx, vy + 4 - bub * 3, 0.8, 0, Math.PI*2); ctx.fill();
+
+    } else if (kind === 'sun') {
+      // GOLD MINE: stickman with a pickaxe over his shoulder, beside coin pile.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 4, shoulderY + 6);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 3, headY - 4);
+      ctx.stroke();
+      // pickaxe handle
+      ctx.strokeStyle = '#7a4e1f'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx + face * 3, headY - 4);
+      ctx.lineTo(cx + face * 10, headY - 12);
+      ctx.stroke();
+      // pickaxe head
+      ctx.strokeStyle = '#cfd6e8'; ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(cx + face * 7, headY - 16);
+      ctx.lineTo(cx + face * 13, headY - 10);
+      ctx.stroke();
+      // coin pile at feet
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath(); ctx.arc(cx - face * 9, gy + 3, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - face * 5, gy + 4, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - face * 7, gy + 1, 3, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#7a5a14'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.arc(cx - face * 9, gy + 3, 3, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx - face * 5, gy + 4, 3, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx - face * 7, gy + 1, 3, 0, Math.PI*2); ctx.stroke();
+      // sparkle
+      const p = (Math.sin(state.frame * 0.18) + 1) * 0.5;
+      ctx.fillStyle = `rgba(255,255,255,${0.5 + p * 0.5})`;
+      ctx.fillRect(cx - face * 7, gy - 2, 1, 1);
+    }
+
+    // -- level pips above head --
+    const lvl = t.level || 1;
+    for (let i = 0; i < lvl; i++) {
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath(); ctx.arc(cx - 6 + i * 6, headY - headR - 6, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   // Achievement toast banner at top-center — fades in/out + slides.
   function drawToasts(ctx, state) {
     if (!state.toasts || state.toasts.length === 0) return;
@@ -2843,191 +3174,10 @@ window.StickFightGame = (function () {
 
     // Towers (per-kind visuals) with shadow and depth
     for (const t of td.towers) {
-      // Range indicator (faint)
-      ctx.fillStyle = 'rgba(255,255,255,.03)';
-      ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.fill();
-      // Drop shadow
-      ctx.fillStyle = 'rgba(0,0,0,.45)';
-      ctx.beginPath(); ctx.ellipse(t.x + 2, t.y + 18, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
-      // Stone tile under
-      ctx.fillStyle = '#4a4a52';
-      ctx.beginPath(); ctx.arc(t.x, t.y + 4, 22, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = '#1a1a22'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(t.x, t.y + 4, 22, 0, Math.PI*2); ctx.stroke();
-      // Base
-      const grad = ctx.createRadialGradient(t.x - 6, t.y - 6, 2, t.x, t.y, 20);
-      grad.addColorStop(0, lighten(t.color, 0.35));
-      grad.addColorStop(1, t.color);
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(t.x, t.y, 18, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = '#0a0e18'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(t.x, t.y, 18, 0, Math.PI*2); ctx.stroke();
-      // Distinct top per kind — visuals match name
-      if (t.kindId === 'basic') {
-        // ARCHER: arc bow + horizontal arrow notched
-        ctx.strokeStyle = '#8a5a2c'; ctx.lineWidth = 3; ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.arc(t.x - 2, t.y, 11, -Math.PI*0.4, Math.PI*0.4);
-        ctx.stroke();
-        // bowstring
-        ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(t.x - 2 + Math.cos(-Math.PI*0.4) * 11, t.y + Math.sin(-Math.PI*0.4) * 11);
-        ctx.lineTo(t.x - 2 + Math.cos( Math.PI*0.4) * 11, t.y + Math.sin( Math.PI*0.4) * 11);
-        ctx.stroke();
-        // arrow
-        ctx.strokeStyle = '#7a4e1f'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(t.x - 4, t.y); ctx.lineTo(t.x + 12, t.y); ctx.stroke();
-        ctx.fillStyle = '#cfd6e8';
-        ctx.beginPath();
-        ctx.moveTo(t.x + 12, t.y - 3);
-        ctx.lineTo(t.x + 16, t.y);
-        ctx.lineTo(t.x + 12, t.y + 3);
-        ctx.closePath(); ctx.fill();
-      } else if (t.kindId === 'sniper') {
-        // SNIPER: scoped rifle pointing up
-        ctx.fillStyle = '#3a3a44';
-        ctx.fillRect(t.x - 3, t.y - 22, 6, 26); // long barrel
-        ctx.fillStyle = '#1a1a22';
-        ctx.fillRect(t.x - 5, t.y - 6, 10, 4); // body
-        ctx.fillStyle = '#5bff8a';
-        ctx.beginPath(); ctx.arc(t.x + 6, t.y - 4, 3, 0, Math.PI * 2); ctx.fill(); // scope dot
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(t.x - 1.5, t.y - 24, 3, 2); // muzzle highlight
-      } else if (t.kindId === 'cannon') {
-        // CANNON: big barrel + carriage with wheels
-        ctx.fillStyle = '#1a1a22';
-        ctx.beginPath(); ctx.arc(t.x - 9, t.y + 8, 5, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(t.x + 9, t.y + 8, 5, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#3a2a18';
-        ctx.fillRect(t.x - 10, t.y + 2, 20, 8); // carriage
-        ctx.fillStyle = '#2a2a32';
-        ctx.fillRect(t.x - 6, t.y - 16, 12, 18); // barrel
-        ctx.strokeStyle = '#0a0a14'; ctx.lineWidth = 1.4;
-        ctx.strokeRect(t.x - 6, t.y - 16, 12, 18);
-        // muzzle ring
-        ctx.fillStyle = '#1a1a22';
-        ctx.beginPath(); ctx.arc(t.x, t.y - 18, 4, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = '#ff9a3c'; ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.arc(t.x, t.y - 18, 4, 0, Math.PI*2); ctx.stroke();
-      } else if (t.kindId === 'frost') {
-        // FROST: 6-spoke snowflake with cross-bars
-        ctx.strokeStyle = t.turret; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-        for (let i = 0; i < 6; i++) {
-          const a = i / 6 * Math.PI * 2;
-          ctx.beginPath();
-          ctx.moveTo(t.x, t.y);
-          ctx.lineTo(t.x + Math.cos(a) * 12, t.y + Math.sin(a) * 12);
-          ctx.stroke();
-          // tiny side branches
-          const bx = t.x + Math.cos(a) * 8, by = t.y + Math.sin(a) * 8;
-          ctx.beginPath();
-          ctx.moveTo(bx - Math.sin(a) * 3, by + Math.cos(a) * 3);
-          ctx.lineTo(bx + Math.sin(a) * 3, by - Math.cos(a) * 3);
-          ctx.stroke();
-        }
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(t.x, t.y, 2.5, 0, Math.PI*2); ctx.fill();
-      } else if (t.kindId === 'laser') {
-        // LASER: glowing diamond emitter with beam
-        ctx.fillStyle = '#1a1a2a';
-        ctx.fillRect(t.x - 8, t.y + 2, 16, 8); // base block
-        ctx.fillStyle = t.turret;
-        ctx.beginPath();
-        ctx.moveTo(t.x, t.y - 12);
-        ctx.lineTo(t.x + 8, t.y);
-        ctx.lineTo(t.x, t.y + 12);
-        ctx.lineTo(t.x - 8, t.y);
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
-        ctx.stroke();
-        // glow center
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(t.x, t.y, 2.5, 0, Math.PI * 2); ctx.fill();
-        // beam to target
-        if (t._beamTarget) {
-          ctx.shadowColor = t.turret; ctx.shadowBlur = 12;
-          ctx.strokeStyle = t.turret; ctx.lineWidth = 4; ctx.lineCap = 'round';
-          ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(t._beamTarget.x, t._beamTarget.y); ctx.stroke();
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6;
-          ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(t._beamTarget.x, t._beamTarget.y); ctx.stroke();
-          ctx.shadowBlur = 0;
-        }
-      } else if (t.kindId === 'tesla') {
-        // TESLA: lightning bolt motif on a coil
-        ctx.fillStyle = '#1a1a3a';
-        ctx.fillRect(t.x - 7, t.y - 4, 14, 14); // base box
-        ctx.fillStyle = t.turret;
-        // zig-zag bolt
-        ctx.beginPath();
-        ctx.moveTo(t.x - 3, t.y - 10);
-        ctx.lineTo(t.x + 2, t.y - 3);
-        ctx.lineTo(t.x - 1, t.y - 3);
-        ctx.lineTo(t.x + 4, t.y + 6);
-        ctx.lineTo(t.x - 1, t.y - 1);
-        ctx.lineTo(t.x + 2, t.y - 1);
-        ctx.lineTo(t.x - 3, t.y - 10);
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.8;
-        ctx.stroke();
-      } else if (t.kindId === 'poison') {
-        // POISON: green vial with bubbles
-        ctx.fillStyle = '#1a3a1a';
-        ctx.fillRect(t.x - 4, t.y - 12, 8, 4); // cork
-        ctx.fillStyle = t.turret;
-        ctx.beginPath();
-        ctx.moveTo(t.x - 5, t.y - 8);
-        ctx.lineTo(t.x + 5, t.y - 8);
-        ctx.lineTo(t.x + 7, t.y + 10);
-        ctx.lineTo(t.x - 7, t.y + 10);
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#1a4a1a'; ctx.lineWidth = 1.4;
-        ctx.stroke();
-        // bubbles
-        ctx.fillStyle = 'rgba(255,255,255,.6)';
-        ctx.beginPath(); ctx.arc(t.x - 2, t.y + 5, 1.2, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(t.x + 2, t.y - 2, 0.9, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(t.x + 1, t.y + 7, 0.7, 0, Math.PI*2); ctx.fill();
-      } else if (t.kindId === 'sun') {
-        // GOLD MINE: pickaxe over a small pile of gold coins
-        // pile of coins
-        ctx.fillStyle = '#ffd76a';
-        ctx.beginPath(); ctx.arc(t.x - 4, t.y + 7, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(t.x + 3, t.y + 7, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(t.x, t.y + 4, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#7a5a14'; ctx.lineWidth = 1.2;
-        ctx.beginPath(); ctx.arc(t.x - 4, t.y + 7, 4, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(t.x + 3, t.y + 7, 4, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(t.x, t.y + 4, 4, 0, Math.PI * 2); ctx.stroke();
-        // pickaxe handle
-        ctx.strokeStyle = '#7a4e1f'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(t.x - 6, t.y - 10); ctx.lineTo(t.x + 6, t.y - 2);
-        ctx.stroke();
-        // pickaxe head
-        ctx.strokeStyle = '#cfd6e8'; ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(t.x - 10, t.y - 8); ctx.lineTo(t.x - 2, t.y - 12);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(t.x - 2, t.y - 12); ctx.lineTo(t.x + 2, t.y - 16);
-        ctx.stroke();
-        // sparkle on coins
-        const p = (Math.sin(state.frame * 0.18) + 1) * 0.5;
-        ctx.fillStyle = `rgba(255,255,255,${0.5 + p * 0.5})`;
-        ctx.fillRect(t.x - 1, t.y + 3, 1, 1);
-        ctx.fillRect(t.x + 4, t.y + 6, 1, 1);
-      }
+      drawTowerStickman(ctx, t, state);
     }
 
-    // Level pips on each tower (1 to 3 small gold dots above the tower)
-    for (const t of td.towers) {
-      const lvl = t.level || 1;
-      for (let i = 0; i < lvl; i++) {
-        ctx.fillStyle = '#ffd76a';
-        ctx.beginPath(); ctx.arc(t.x - 6 + i * 6, t.y - 24, 2.5, 0, Math.PI * 2); ctx.fill();
-      }
-    }
+    // (level pips are drawn inside drawTowerStickman above)
 
     // Selected tower: range circle + selection ring on the tower, plus a
     // fixed-position upgrade/sell panel pinned to the top-right of the canvas.
@@ -3141,59 +3291,56 @@ window.StickFightGame = (function () {
       }
     }
 
-    // Enemies drawn as stickmen walking from left to right
+    // Enemies drawn as side-profile stickmen that face their direction of
+    // travel and stride properly along the path.
     for (const e of td.enemies) {
       const tinted = e.slowFor > 0 ? '#a5f3ff' : (e.poisonFor > 0 ? '#7bff5a' : e.color);
       const dark = '#0a0a14';
-      // Scale based on enemy type (basic ~1, fast ~0.9, armor ~1.15, boss ~1.6)
       const s = e.type === 'fast' ? 0.9 : e.type === 'armor' ? 1.15 : e.type === 'boss' ? 1.6 : 1.0;
-      // Walk cycle — each enemy has its own phase offset (e.wig) so they
-      // don't all march in sync. Speed scales with enemy speed, capped so
-      // boss/armor enemies don't get a slow shuffle.
-      const speedFactor = Math.min(1.6, Math.max(0.6, (e.speed || 1) * 0.9));
-      const phase = state.frame * 0.22 * speedFactor + (e.wig || 0);
-      const sinP = Math.sin(phase);
-      // Each foot lifts on its own half of the cycle (alternating step).
-      const liftL = Math.max(0, sinP) * 4.5 * s;   // pixels lifted off ground
-      const liftR = Math.max(0, -sinP) * 4.5 * s;
-      // Body bob — peaks while a foot is mid-stride.
-      const bob = Math.abs(sinP) * 1.2 * s;
-      const headY = e.y - 26 * s - bob;
+      // Facing direction from movement vector. Default to +x if not moving.
+      const face = (e.vx !== undefined && Math.abs(e.vx) > 0.01) ? (e.vx >= 0 ? 1 : -1) : 1;
+      // Walk cycle phase. Scales with both type-speed and slow status.
+      const speedFactor = Math.min(1.7, Math.max(0.5, (e.speed || 1) * 0.9));
+      const phase = state.frame * 0.32 * speedFactor + (e.wig || 0);
+      const stride = Math.sin(phase) * 6 * s;        // forward/back along facing
+      const liftFront = Math.max(0, stride) * 0.5;   // front foot lifts when swinging forward
+      const liftBack  = Math.max(0, -stride) * 0.5;
+      const bob = Math.abs(Math.sin(phase * 2)) * 1.4 * s;
+      const headY  = e.y - 24 * s - bob;
       const torsoY = e.y - 4  * s - bob;
-      const feetY = e.y + 16 * s;
-      // Shadow grows when both feet are planted, shrinks when one is up.
-      const shadowR = (12 - Math.abs(sinP) * 2.5) * s;
+      const hipY   = torsoY + 14 * s;
+      const feetY  = e.y + 16 * s;
+      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,.35)';
-      ctx.beginPath(); ctx.ellipse(e.x, feetY + 4, shadowR, 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(e.x, feetY + 4, 10 * s, 3, 0, 0, Math.PI * 2); ctx.fill();
 
-      // Body parts
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = tinted; ctx.lineWidth = 3.6 * s;
-      const shoulderY = headY + 10 * s;
-      const hipY = torsoY + 14 * s;
+      ctx.strokeStyle = tinted; ctx.lineWidth = 3.4 * s;
       // Torso
       ctx.beginPath();
       ctx.moveTo(e.x, headY + 8 * s);
       ctx.lineTo(e.x, hipY);
       ctx.stroke();
-      // Arms — gentle counter-swing (right arm forward while left leg forward).
-      // Front view, so "forward/back" reads as up/down at the hand.
-      const armSway = sinP * 3.2 * s;
+      // Arms — counter-swing the legs along the facing axis. In side view
+      // arms swing forward (+face) when their opposite leg swings forward.
+      const armSwing = Math.sin(phase) * 5 * s;
+      const shoulderY = headY + 10 * s;
       ctx.beginPath();
-      // Left arm
+      // Back arm forward when front leg goes back (i.e. -stride direction)
       ctx.moveTo(e.x, shoulderY);
-      ctx.lineTo(e.x - 8 * s, shoulderY + 11 * s + armSway);
-      // Right arm
+      ctx.lineTo(e.x + face * armSwing, shoulderY + 11 * s);
+      // Front arm opposite
       ctx.moveTo(e.x, shoulderY);
-      ctx.lineTo(e.x + 8 * s, shoulderY + 11 * s - armSway);
+      ctx.lineTo(e.x - face * armSwing, shoulderY + 11 * s);
       ctx.stroke();
-      // Legs — each foot lifts in alternation. Feet stay at the same
-      // horizontal spread; only the vertical position changes for the step.
+      // Legs — one strides forward (+face*stride) while the other plants back.
       ctx.beginPath();
+      // Front leg
       ctx.moveTo(e.x, hipY);
-      ctx.lineTo(e.x - 5 * s, feetY - liftL);
+      ctx.lineTo(e.x + face * stride, feetY - liftFront);
+      // Back leg
       ctx.moveTo(e.x, hipY);
-      ctx.lineTo(e.x + 5 * s, feetY - liftR);
+      ctx.lineTo(e.x - face * stride, feetY - liftBack);
       ctx.stroke();
       // Head
       ctx.fillStyle = tinted;
@@ -3468,5 +3615,6 @@ window.StickFightGame = (function () {
     }
   }
 
-  return { Component: StickFightCanvas, DEFAULT_PLATFORMS, W, H, controlsFor, SFX };
+  return { Component: StickFightCanvas, DEFAULT_PLATFORMS, W, H, controlsFor, SFX,
+           TD_PATH_IDS };
 })();
