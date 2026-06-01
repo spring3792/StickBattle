@@ -1455,14 +1455,16 @@
             </button>
           </div>
           <div className="panel" style={{ padding:22 }}>
-            {tab === 'login' ? <LoginForm onLoggedIn={onLoggedIn}/> : <SignUpForm onLoggedIn={onLoggedIn}/>}
+            {tab === 'login'
+              ? <LoginForm onLoggedIn={onLoggedIn} onGoSignUp={() => setTab('signup')}/>
+              : <SignUpForm onLoggedIn={onLoggedIn} onGoLogIn={() => setTab('login')}/>}
           </div>
         </div>
       </div>
     );
   }
 
-  function LoginForm({ onLoggedIn }) {
+  function LoginForm({ onLoggedIn, onGoSignUp }) {
     const users = D.listUsers();
     const [pickedName, setPickedName] = useState(users[0] || '');
     const [password, setPassword] = useState('');
@@ -1478,7 +1480,14 @@
     if (users.length === 0) {
       return (
         <div style={{ textAlign:'center', color:'var(--ink-2)', padding:'18px 0' }}>
-          No saved profiles yet. Hit <strong>SIGN UP</strong> to create one.
+          No saved profiles yet.{' '}
+          {onGoSignUp ? (
+            <button onClick={onGoSignUp}
+              style={{ background:'none', border:'none', color:'var(--fire-2)',
+                       textDecoration:'underline', cursor:'pointer', font:'inherit' }}>
+              Create one →
+            </button>
+          ) : <strong>SIGN UP</strong>}
         </div>
       );
     }
@@ -1524,11 +1533,23 @@
           style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
           ▶ LOG IN
         </button>
+        {/* Always-on "create new account" link so users can spin up another
+            profile without hunting for the SIGN UP tab. */}
+        {onGoSignUp && (
+          <div style={{ textAlign:'center', fontSize:13, color:'var(--ink-2)', marginTop:8 }}>
+            Don't have an account?{' '}
+            <button onClick={onGoSignUp}
+              style={{ background:'none', border:'none', color:'var(--fire-2)',
+                       textDecoration:'underline', cursor:'pointer', font:'inherit' }}>
+              Create one →
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
-  function SignUpForm({ onLoggedIn }) {
+  function SignUpForm({ onLoggedIn, onGoLogIn }) {
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
     const [avatar, setAvatar] = useState(null);
@@ -1584,6 +1605,16 @@
           style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
           ▶ CREATE ACCOUNT
         </button>
+        {onGoLogIn && D.listUsers().length > 0 && (
+          <div style={{ textAlign:'center', fontSize:13, color:'var(--ink-2)', marginTop:8 }}>
+            Already have an account?{' '}
+            <button onClick={onGoLogIn}
+              style={{ background:'none', border:'none', color:'var(--fire-2)',
+                       textDecoration:'underline', cursor:'pointer', font:'inherit' }}>
+              Log in →
+            </button>
+          </div>
+        )}
       </div>
     );
   }
