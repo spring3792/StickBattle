@@ -398,6 +398,11 @@ window.StickFightGame = (function () {
           selectedKind: 'basic',
           // Selected placed tower (for upgrade UI)
           selectedTower: null,
+          // Co-defender CPU player. Has its own gold pool + drip income, and
+          // periodically auto-builds a tower somewhere safe.
+          cpuGold: 60,
+          cpuBuildCd: 60 * 5,        // first build attempt in ~5s
+          cpuIncomeCd: 60 * 6,       // +20g every 6 seconds
         };
       }
       // spawn ambient embers based on stage
@@ -773,12 +778,65 @@ window.StickFightGame = (function () {
         g.totalStrokes[g.activeSlot]++;
         advanceGolfTurn(state);
       }
+
+      // BOT AI — if it's the bot's turn and the ball is settled, take a shot.
+      const turnPlayer = state.players[g.activeSlot];
+      if (settled && !g.holed[g.activeSlot] && !g.aim &&
+          turnPlayer && turnPlayer.isBot) {
+        if (g._botShotIn === undefined) g._botShotIn = 40; // 0.7s of "thinking"
+        g._botShotIn--;
+        if (g._botShotIn <= 0) {
+          g._botShotIn = undefined;
+          // Aim toward hole with adaptive power.
+          const dx = course.hole.x - ball.x;
+          const dy = course.hole.y - ball.y;
+          const dist = Math.hypot(dx, dy);
+          // Difficulty wobble: harder bot is more accurate.
+          const cfg = state.botDifficulty === 'easy' ? { jitter:0.30, powerErr:0.40 }
+                    : state.botDifficulty === 'hard' ? { jitter:0.06, powerErr:0.08 }
+                    : { jitter:0.14, powerErr:0.18 };
+          const ang = Math.atan2(dy, dx) + (Math.random() - 0.5) * cfg.jitter;
+          // Map distance to "drag" magnitude — 220 px drag = max power. We want
+          // to slightly overshoot for far balls and undershoot for short ones.
+          let drag = Math.min(220, dist * 0.95 + 24);
+          drag *= 1 + (Math.random() - 0.5) * cfg.powerErr;
+          drag = Math.max(40, Math.min(220, drag));
+          g.aim = {
+            from: { x: ball.x, y: ball.y },
+            to:   { x: ball.x - Math.cos(ang) * drag,
+                    y: ball.y - Math.sin(ang) * drag },
+          };
+          golfRelease(state);
+        }
+      } else {
+        g._botShotIn = undefined;
+      }
     }
 
     // ---- TOWER DEFENSE (TOP-DOWN) ----
     if (state.mode === 'td' && state.winner === null && state.td) {
       const td = state.td;
       const human = state.players.find(p => !p.isBot);
+      const bot = state.players.find(p => p.isBot);
+
+      // ===== CPU co-defender =====
+      // Drip a little income every ~6s plus a bonus 30g per wave.
+      if (bot) {
+        td.cpuIncomeCd = (td.cpuIncomeCd || 0) - 1;
+        if (td.cpuIncomeCd <= 0) {
+          td.cpuGold = (td.cpuGold || 0) + 20;
+          td.cpuIncomeCd = 60 * 6;
+        }
+        td.cpuBuildCd = (td.cpuBuildCd || 0) - 1;
+        if (td.cpuBuildCd <= 0) {
+          tdCpuTryBuild(state);
+          // Re-arm. Faster on hard, slower on easy.
+          const diff = state.botDifficulty || 'normal';
+          td.cpuBuildCd = diff === 'hard'   ? 60 * 5
+                        : diff === 'easy'   ? 60 * 14
+                                            : 60 * 9;
+        }
+      }
 
       // Game speed — at 2x we run the entire step block again at the end.
       // (Implementation detail: handled by outer caller using td.speed.)
@@ -826,6 +884,7 @@ window.StickFightGame = (function () {
           td.spawnLeft = 5 + Math.min(td.waveNum, 12);
           td.waveTimer = 60 * 4;
           td.gold += 60;
+          td.cpuGold = (td.cpuGold || 0) + 40; // bot also gets bonus
           if (human) human.score = td.waveNum - 1;
           td.waveReady = true;          // pause for the player to prepare
           // Toast every 5 waves; always toast the first cleared.
@@ -1264,6 +1323,41 @@ window.StickFightGame = (function () {
             if (cache.punch && Math.random() < 0.6) {
               cache.punch = false; cache.kick = true;
             }
+          } else if (state.mode === 'bomb' && state.bomb) {
+            // Bomb tag: if WE have the bomb, charge the nearest opponent to
+            // pass it via a melee hit. If we don't, RUN AWAY from whoever
+            // does. Timer-pressure makes the holder more aggressive late.
+            const haveBomb = state.bomb.carrierSlot === p.slot;
+            if (haveBomb) {
+              // Aggressively close on target; emphasize punch (faster than kick).
+              cache.left  = dx < -8;
+              cache.right = dx >  8;
+              // Frantic late-game: jump-spam to chase fleeing target.
+              if (state.bomb.timer < 60 * 2 && p.onGround && Math.abs(dx) < 200) cache.jump = true;
+              const closeRange = PUNCH_RANGE * (b.reachMul||1) + cfg.reachBonus + 6;
+              if (Math.abs(dx) < closeRange && Math.abs(target.y - p.y) < 50) {
+                cache.punch = true;
+              }
+            } else {
+              // Flee — invert direction from carrier. Find the carrier.
+              const carrier = state.players.find(x => x.slot === state.bomb.carrierSlot && x.alive);
+              if (carrier) {
+                const cx = carrier.x - p.x;
+                // Run away. If cornered against an edge, jump to swap sides.
+                cache.left  = cx > 0;       // carrier to the right → flee left
+                cache.right = cx < 0;
+                cache.punch = false; cache.kick = false;
+                if ((p.x < 90 && cache.left) || (p.x > W-90 && cache.right)) {
+                  // Cornered: try to leap over carrier
+                  if (p.onGround) cache.jump = true;
+                  cache.left = !cache.left;
+                  cache.right = !cache.right;
+                }
+                // Also jump if carrier is very close to "evade"
+                if (Math.abs(cx) < 80 && Math.abs(carrier.y - p.y) < 60 && p.onGround
+                    && Math.random() < 0.3) cache.jump = true;
+              }
+            }
           }
 
           // ---- HAZARD AWARENESS ----
@@ -1333,14 +1427,58 @@ window.StickFightGame = (function () {
                             p.y > hz.y - 40 && p.y < hz.y + hz.h + 20;
             if (overlap && p.onGround) { cache.jump = true; break; }
           }
-          // Pre-jump if we're near a lava edge while walking (cliff sense)
-          if (p.onGround && cache.right) {
-            let safe = false;
-            for (const plat of (state.platforms || [])) {
-              if (p.x + 60 > plat.x && p.x + 60 < plat.x + plat.w &&
-                  plat.y >= p.y - 4 && plat.y < LAVA_Y - 40) { safe = true; break; }
+          // Pre-jump if we're near a lava edge — symmetric cliff sense for
+          // both directions. Also panic-jump if we're currently airborne and
+          // about to land on a hazard.
+          if (p.onGround) {
+            const lookAhead = (dirSign) => {
+              const probeX = p.x + dirSign * 60;
+              let safe = false;
+              for (const plat of (state.platforms || [])) {
+                if (probeX > plat.x && probeX < plat.x + plat.w &&
+                    plat.y >= p.y - 4 && plat.y < LAVA_Y - 40) { safe = true; break; }
+              }
+              return safe;
+            };
+            if (cache.right && !lookAhead(1))  cache.right = false;
+            if (cache.left  && !lookAhead(-1)) cache.left  = false;
+            // If still committed to a direction but there's a hazard within
+            // jump distance, force the jump (don't only rely on the earlier
+            // mid-probe — sometimes the bot is closer than mid-probe range).
+            const dirX = cache.right ? 1 : (cache.left ? -1 : 0);
+            if (dirX !== 0) {
+              for (const hz of (state.hazards || [])) {
+                if (hz.type !== 'sawblade' && hz.type !== 'instakill' && hz.type !== 'spike') continue;
+                const aheadStart = p.x + dirX * 16;
+                const aheadEnd   = p.x + dirX * 70;
+                const xMin = Math.min(aheadStart, aheadEnd);
+                const xMax = Math.max(aheadStart, aheadEnd);
+                if (hz.x < xMax && hz.x + hz.w > xMin &&
+                    hz.y < p.y + 50 && hz.y + hz.h > p.y - 30) {
+                  cache.jump = true; break;
+                }
+              }
             }
-            if (!safe) cache.right = false;
+          }
+          // Mid-air panic jump (double-jump) — if we're falling toward a
+          // hazard's column and we still have a jump charge, use it to clear.
+          if (!p.onGround && p.vy >= 0 && (p.jumpsLeft || 0) > 0) {
+            for (const hz of (state.hazards || [])) {
+              if (hz.type !== 'sawblade' && hz.type !== 'instakill' && hz.type !== 'spike') continue;
+              if (p.x + 8 > hz.x && p.x - 8 < hz.x + hz.w &&
+                  p.y < hz.y && hz.y - p.y < 60) {
+                cache.jump = true; break;
+              }
+            }
+            // Falling into lava with a jump still available? Use it.
+            if (p.y > GROUND_Y - 40 && p.y < LAVA_Y) {
+              let safeBelow = false;
+              for (const plat of (state.platforms || [])) {
+                if (p.x > plat.x - 10 && p.x < plat.x + plat.w + 10 &&
+                    plat.y >= p.y && plat.y < LAVA_Y - 10) { safeBelow = true; break; }
+              }
+              if (!safeBelow) cache.jump = true;
+            }
           }
           if (p.onGround && cache.left) {
             let safe = false;
@@ -1864,6 +2002,66 @@ window.StickFightGame = (function () {
     }
     return false;
   }
+  // CPU co-defender tries to build a tower somewhere off-path. Picks the
+  // most-expensive affordable kind it doesn't already have too many of.
+  function tdCpuTryBuild(state) {
+    const td = state.td;
+    if (!td) return;
+    const budget = td.cpuGold || 0;
+    // Prefer kinds it can afford, sorted by cost desc; skip cosmetic-only mine sometimes.
+    const owned = {};
+    for (const t of td.towers) { if (t.cpu) owned[t.kindId] = (owned[t.kindId] || 0) + 1; }
+    const affordable = td.towerKinds
+      .filter(k => k.cost <= budget)
+      .filter(k => (owned[k.id] || 0) < (k.id === 'sun' ? 1 : 3))
+      .sort((a, b) => b.cost - a.cost);
+    if (affordable.length === 0) return;
+    // Weighted random — biased toward higher tiers when affordable.
+    const pickIdx = Math.min(affordable.length - 1, Math.floor(Math.random() * Math.random() * affordable.length));
+    const kind = affordable[pickIdx];
+
+    // Find a placement spot: try a few random points, near the path for utility.
+    for (let attempt = 0; attempt < 32; attempt++) {
+      // Pick a random point near a random path segment, but offset perpendicularly.
+      const seg = Math.floor(Math.random() * (td.path.length - 1));
+      const a = td.path[seg], bp = td.path[seg + 1];
+      const t = Math.random();
+      const cx = a.x + (bp.x - a.x) * t;
+      const cy = a.y + (bp.y - a.y) * t;
+      const dx = bp.x - a.x, dy = bp.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const offset = 55 + Math.random() * 40;
+      const px = cx + nx * offset * side;
+      const py = cy + ny * offset * side;
+      if (px < 40 || px > W - 40 || py < 40 || py > H - 110) continue;
+      if (pointNearPath(td.path, px, py, 40)) continue;
+      let collision = false;
+      for (const t2 of td.towers) {
+        if (Math.hypot(t2.x - px, t2.y - py) < 50) { collision = true; break; }
+      }
+      if (collision) continue;
+      // Build it.
+      td.cpuGold -= kind.cost;
+      td.towers.push({
+        x: px, y: py,
+        kindId: kind.id,
+        level: 1,
+        range: kind.range,
+        atkCd: 0, atkRate: kind.atkCd,
+        dmg: kind.dmg,
+        color: kind.color, turret: kind.turret,
+        splash: kind.id === 'cannon' ? 50 : 0,
+        slow:   kind.id === 'frost'  ? { factor:0.55, durSec:2 } : null,
+        baseCost: kind.cost,
+        cpu: true,                    // mark as CPU-owned (rendered with badge)
+      });
+      SFX.place();
+      return;
+    }
+  }
+
   function tdTryPlaceTower(state, x, y) {
     const td = state.td;
     if (!td) return;
@@ -2930,6 +3128,14 @@ window.StickFightGame = (function () {
       ctx.fillStyle = '#ffd76a';
       ctx.beginPath(); ctx.arc(cx - 6 + i * 6, headY - headR - 6, 2.2, 0, Math.PI * 2); ctx.fill();
     }
+    // -- CPU-owned badge (small "C" tag below feet) --
+    if (t.cpu) {
+      ctx.fillStyle = '#ff5b6e';
+      ctx.fillRect(cx - 9, gy + 20, 18, 9);
+      ctx.fillStyle = '#fff';
+      ctx.font = "700 7px 'Bebas Neue'"; ctx.textAlign = 'center';
+      ctx.fillText('CPU', cx, gy + 27);
+    }
   }
 
   // Achievement toast banner at top-center — fades in/out + slides.
@@ -3821,14 +4027,21 @@ window.StickFightGame = (function () {
     drawToasts(ctx, state);
 
     // HUD top
+    const cpuActive = state.players.some(p => p.isBot);
     ctx.fillStyle = 'rgba(8,4,18,.85)';
-    ctx.fillRect(14, 14, 360, 50);
+    ctx.fillRect(14, 14, cpuActive ? 380 : 360, 50);
     ctx.fillStyle = '#ffd76a';
     ctx.font = "700 18px 'Bebas Neue'"; ctx.textAlign = 'left';
     ctx.fillText(`GOLD ${td.gold}`, 24, 38);
     ctx.fillStyle = '#fff';
     ctx.font = "700 14px 'Bebas Neue'";
     ctx.fillText(`WAVE ${td.waveNum} / ${td.maxWaves}`, 24, 58);
+    // CPU co-defender gold (only when a bot is in the game).
+    if (cpuActive) {
+      ctx.fillStyle = '#ff8a3d';
+      ctx.font = "700 12px 'Rajdhani'";
+      ctx.fillText(`CPU ${td.cpuGold || 0}g`, 130, 38);
+    }
     // Show the random map name in the HUD so each match feels distinct.
     if (td.pathId) {
       ctx.fillStyle = '#c9b4dc';

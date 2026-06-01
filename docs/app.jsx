@@ -1226,6 +1226,22 @@
       else setCurrentIdx(currentIdx + 1);
     }
 
+    // CPU bots auto-pick after a short delay so the human still gets to see
+    // what the bot grabbed.
+    useEffect(() => {
+      if (!liveProfile || !liveProfile.isBot) return;
+      const choices = offers[currentIdx] || [];
+      if (choices.length === 0) return;
+      const id = setTimeout(() => {
+        // Bot pick: prefer powerups it doesn't already have; tie-break random.
+        const owned = new Set((liveProfile.buffs || []).map(b => b.id));
+        const fresh = choices.filter(c => !owned.has(c.id));
+        const pool  = fresh.length > 0 ? fresh : choices;
+        pick(pool[Math.floor(Math.random() * pool.length)]);
+      }, 900);
+      return () => clearTimeout(id);
+    }, [currentIdx, liveProfile, offers]);
+
     return (
       <div className="center" style={{ padding:24, gap:14, zIndex:2 }}>
         <div style={{ textAlign:'center' }}>
