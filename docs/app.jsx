@@ -1264,7 +1264,92 @@
   }
 
   // ============== match results ==============
-  function MatchResults({ profiles, winner, onPlayAgain, onMenu }) {
+  function MatchResults({ profiles, winner, mode, onPlayAgain, onMenu }) {
+    // Solo modes that aren't a points race — only show the human player and a
+    // mode-appropriate summary instead of "first to N points".
+    const SOLO = ['td', 'golf', 'parkour', 'last'];
+    const isSolo = SOLO.includes(mode);
+    const human = profiles.find(p => !p.isBot) || winner;
+    const humanWon = winner && human && winner._slot === human._slot;
+
+    // Map mode -> { headline, sub, statLabel, statValue }
+    const summary = (() => {
+      if (mode === 'td') {
+        const wave = (human && human._score) || 0;
+        return {
+          headline: humanWon ? 'VICTORY' : 'BASE DESTROYED',
+          sub: humanWon ? 'All waves cleared!' : `Held out until wave ${wave + 1}`,
+          statLabel: 'Waves cleared',
+          statValue: wave,
+        };
+      }
+      if (mode === 'last') {
+        const kills = (human && human._score) || 0;
+        return {
+          headline: 'LAST STAND',
+          sub: `${kills} ${kills === 1 ? 'kill' : 'kills'} before going down`,
+          statLabel: 'Kills',
+          statValue: kills,
+        };
+      }
+      if (mode === 'parkour') {
+        return {
+          headline: humanWon ? 'YOU WIN' : 'YOU LOST',
+          sub: humanWon ? 'First to the finish!' : 'Better luck next run',
+          statLabel: null, statValue: null,
+        };
+      }
+      if (mode === 'golf') {
+        const strokes = (human && human._score) || 0;
+        return {
+          headline: 'HOLE COMPLETE',
+          sub: `Finished in ${strokes} strokes`,
+          statLabel: 'Strokes',
+          statValue: strokes,
+        };
+      }
+      return null;
+    })();
+
+    if (isSolo && summary) {
+      return (
+        <div className="center" style={{ padding:24, gap:16, zIndex:2 }}>
+          <div style={{ textAlign:'center' }}>
+            <Icon id="trophy" size={64} color={humanWon ? winner.color : '#7a6a92'} />
+            <div className="title-art" style={{ color: humanWon ? winner.color : '#ff5b6e', marginTop:8 }}>
+              {summary.headline}
+            </div>
+            <div className="title-sub">{summary.sub}</div>
+          </div>
+          {summary.statLabel !== null && (
+            <div className="panel" style={{ width: 'min(420px, 92vw)' }}>
+              <div className="row" style={{ alignItems:'center', justifyContent:'space-between', padding:'4px 4px' }}>
+                <div className="row" style={{ gap:12 }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:human.color, border:`2px solid ${human.darkColor}` }} />
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:16 }}>{human.name}</div>
+                    <div style={{ fontSize:11, color:'var(--ink-3)' }}>{summary.statLabel}</div>
+                  </div>
+                </div>
+                <div style={{ fontFamily:"'Bebas Neue'", fontSize:42, color:'var(--fire-3)' }}>
+                  {summary.statValue}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="row">
+            <button className="btn ghost" onClick={onMenu}>
+              <Icon id="back" size={14} style={{verticalAlign:'middle', marginRight:6}}/>Menu
+            </button>
+            <button className="btn big" onClick={onPlayAgain}>
+              <Icon id="play" size={20} style={{verticalAlign:'middle', marginRight:10}}/>Play Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Default: head-to-head "first to N" scoreboard (Stick Fight, Sumo, KOTH, Bomb).
     const sorted = profiles.slice().sort((a,b) => b._score - a._score);
     return (
       <div className="center" style={{ padding:24, gap:16, zIndex:2 }}>
@@ -1523,7 +1608,7 @@
             onDone={applyDraftResult} />
         )}
         {stage === 'results' && matchWinner && (
-          <MatchResults profiles={profiles} winner={matchWinner}
+          <MatchResults profiles={profiles} winner={matchWinner} mode={settings.mode}
             onPlayAgain={() => { setMatchWinner(null); startMatch(); }}
             onMenu={() => { setMatchWinner(null); setStage('launch'); }} />
         )}
