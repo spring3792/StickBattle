@@ -3395,8 +3395,11 @@ window.StickFightGame = (function () {
     ctx.beginPath(); ctx.arc(td.path[0].x + 30, td.path[0].y, 8, 0, Math.PI*2); ctx.fill();
     // Base marker (end)
     // ============ BASE — proper little castle ============
+    // All path layouts end at the right edge (end.x = W). The castle is 80 px
+    // wide, so we pull it back to fit entirely inside the canvas (right wall
+    // sits just inside the edge). The "gate" reads as the enemies' destination.
     const end = td.path[td.path.length-1];
-    const bx = end.x - 6, by = end.y;
+    const bx = Math.min(end.x - 44, W - 44), by = end.y;
     // Drop shadow
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.beginPath(); ctx.ellipse(bx, by + 38, 38, 6, 0, 0, Math.PI*2); ctx.fill();
