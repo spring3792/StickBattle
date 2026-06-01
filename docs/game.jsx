@@ -388,6 +388,11 @@ window.StickFightGame = (function () {
           baseLost: false,
           endless: !!tdEndless,
           maxWaves: tdEndless ? 9999 : 7,
+          // Wave control: player must press "Start Wave" between waves so they
+          // can place/upgrade at their own pace. `waveReady` = waiting for start.
+          waveReady: true,
+          // Game speed (1 or 2) — toggleable via UI button.
+          speed: 1,
           // Tower catalog
           towerKinds: TD_TOWER_KINDS,
           selectedKind: 'basic',
@@ -439,6 +444,7 @@ window.StickFightGame = (function () {
           // 2. Click on existing tower → select it
           // 3. Tower-kind picker
           // 4. Place a new tower
+          if (tdControlsClick(st, pt.x, pt.y)) return;
           if (tdUpgradePanelClick(st, pt.x, pt.y)) return;
           const existing = tdTowerAt(st, pt.x, pt.y);
           if (existing) {
@@ -479,8 +485,14 @@ window.StickFightGame = (function () {
           rafRef.current = requestAnimationFrame(loop);
           return;
         }
-        if (state.hitstop > 0) { state.hitstop--; }
-        else { step(state, keysRef.current); }
+        // TD 2× speed runs the sim step twice per RAF.
+        const tdSpeed = (state.mode === 'td' && state.td && state.td.speed) || 1;
+        const iterations = Math.max(1, Math.min(4, tdSpeed));
+        for (let i = 0; i < iterations; i++) {
+          if (state.hitstop > 0) { state.hitstop--; }
+          else { step(state, keysRef.current); }
+          if (state.winner !== null) break;
+        }
         draw(ctx, state);
         if (state.winner !== null) {
           // Fire win/lose sting once at the moment the winner is decided.
@@ -768,8 +780,13 @@ window.StickFightGame = (function () {
       const td = state.td;
       const human = state.players.find(p => !p.isBot);
 
-      // Wave / enemy spawning — varied types per wave
-      if (td.spawnLeft > 0) {
+      // Game speed — at 2x we run the entire step block again at the end.
+      // (Implementation detail: handled by outer caller using td.speed.)
+
+      // Wave / enemy spawning — varied types per wave. The wave only ticks
+      // when the player has pressed "Start Wave" (waveReady === false). Until
+      // then enemies pause and the player can build/upgrade freely.
+      if (td.spawnLeft > 0 && !td.waveReady) {
         td.waveTimer--;
         if (td.waveTimer <= 0) {
           td.waveTimer = Math.max(18, 55 - td.waveNum * 2);
@@ -803,12 +820,14 @@ window.StickFightGame = (function () {
         if (!td.endless && td.waveNum >= td.maxWaves) {
           state.winner = human ? human.slot : 0;
           state.endTimer = 140;
-        } else {
+        } else if (!td.waveReady) {
+          // Wave finished — move to next and idle until player clicks Start.
           td.waveNum++;
           td.spawnLeft = 5 + Math.min(td.waveNum, 12);
           td.waveTimer = 60 * 4;
           td.gold += 60;
           if (human) human.score = td.waveNum - 1;
+          td.waveReady = true;          // pause for the player to prepare
           // Toast every 5 waves; always toast the first cleared.
           if (td.waveNum === 2 || td.waveNum % 5 === 1) {
             spawnToast(state, `WAVE ${td.waveNum - 1} CLEARED`, '#5bff8a');
@@ -840,6 +859,18 @@ window.StickFightGame = (function () {
         }
         if (e.hp <= 0) {
           spawnStarBurst(state, e.x, e.y, '#ffd76a');
+          // Plague: poisoned enemy dying spreads poison to others within 80 px.
+          if (e.poisonPlague) {
+            for (const o of td.enemies) {
+              if (o === e) continue;
+              if (Math.hypot(o.x - e.x, o.y - e.y) < 80) {
+                o.poisonFor = Math.max(o.poisonFor || 0, 60 * 2);
+                o.poisonDps = Math.max(o.poisonDps || 0, 4);
+                o.poisonPlague = true;            // chains
+              }
+            }
+            spawnParticles(state, e.x, e.y, '#7bff5a', 18, 1.2);
+          }
           td.enemies.splice(i, 1);
           td.gold += 12;
           SFX.enemyDie();
@@ -853,13 +884,16 @@ window.StickFightGame = (function () {
         if (t.kindId === 'sun') {
           t.atkCd = (t.atkCd || 0) - 1;
           if (t.atkCd <= 0) {
-            td.gold += 30;
+            const payout = t.payout || 30;
+            td.gold += payout;
             t.atkCd = t.atkRate || 300;
             spawnStarBurst(state, t.x, t.y, '#ffd76a');
+            spawnPopup(state, t.x, t.y - 24, `+${payout}g`, '#ffd76a');
           }
           continue;
         }
-        // LASER: continuous beam to nearest enemy in range, applies dmg every frame
+        // LASER: continuous beam to nearest enemy in range, applies dmg every frame.
+        // L3 Prism Split: also damages a second nearby enemy.
         if (t.kindId === 'laser') {
           let target = null, bestD = Infinity;
           for (const e of td.enemies) {
@@ -867,10 +901,27 @@ window.StickFightGame = (function () {
             if (d <= t.range && d < bestD) { bestD = d; target = e; }
           }
           t._beamTarget = target;
+          t._beamTarget2 = null;
           if (target) {
             target.hp -= t.dmg;
             if (state.frame % 4 === 0) {
               spawnParticles(state, target.x, target.y, t.turret, 1, 0.6);
+            }
+            // Prism split — find a second nearby enemy
+            if ((t.chainCount || 0) >= 2) {
+              let next = null, bd = Infinity;
+              for (const e of td.enemies) {
+                if (e === target) continue;
+                const d = Math.hypot(e.x - target.x, e.y - target.y);
+                if (d <= 90 && d < bd) { bd = d; next = e; }
+              }
+              if (next) {
+                next.hp -= t.dmg * 0.7;
+                t._beamTarget2 = next;
+                if (state.frame % 4 === 0) {
+                  spawnParticles(state, next.x, next.y, t.turret, 1, 0.5);
+                }
+              }
             }
           }
           continue;
@@ -887,11 +938,13 @@ window.StickFightGame = (function () {
           t.atkCd = t.atkRate || 24;
           SFX.towerFire(t.kindId);
           if (t.kindId === 'tesla') {
-            // Instant chain lightning
+            // Instant chain lightning. Upgraded Tesla (Overload) hits 5 enemies.
             let cur = target;
             const hit = new Set();
-            for (let chain = 0; chain < 3 && cur; chain++) {
+            const maxChain = t.chainCount || 3;
+            for (let chain = 0; chain < maxChain && cur; chain++) {
               cur.hp -= t.dmg;
+              if (t.stunFrames) cur.slowFor = Math.max(cur.slowFor||0, t.stunFrames * 6); // soft stun via heavy slow
               hit.add(cur);
               spawnParticles(state, cur.x, cur.y, t.turret, 5, 1);
               // Find next nearest enemy not already hit within 100 px
@@ -919,24 +972,33 @@ window.StickFightGame = (function () {
           if (t.kindId === 'poison') {
             // Apply DoT
             target.hp -= t.dmg;
-            target.poisonFor = 60 * 3;
-            target.poisonDps = 4;
+            target.poisonFor = 60 * (t.level >= 2 ? 4 : 3);
+            target.poisonDps = t.level >= 3 ? 8 : 4;
+            target.poisonPlague = !!t.plague;     // marks for plague-spread on death
             spawnParticles(state, target.x, target.y, t.turret, 6, 0.8);
             continue;
           }
-          td.proj.push({
-            x: t.x, y: t.y,
-            target, dmg: t.dmg,
-            splash: t.splash || 0,
-            slow: t.slow || null,
-            speed: t.kindId === 'sniper' ? 22 : t.kindId === 'cannon' ? 9 : 14,
-            color: t.turret,
-            kindId: t.kindId,
-            // angle is set per frame from the velocity vector — used by
-            // projectile drawing to orient arrows / streaks.
-            ang: 0,
-            life: 90,
-          });
+          // Standard projectile fire. Archer multishot fires N arrows at the
+          // same target with a small angular spread.
+          const shots = (t.kindId === 'basic' ? (t.multishot || 1) : 1);
+          for (let s = 0; s < shots; s++) {
+            const offsetAng = shots > 1 ? ((s - (shots - 1) / 2) * 0.25) : 0;
+            td.proj.push({
+              x: t.x, y: t.y,
+              target, dmg: t.dmg,
+              splash: t.splash || 0,
+              slow: t.slow || null,
+              pierce: !!t.pierce,
+              crit: !!t.crit,
+              freezeChance: t.freezeChance || 0,
+              speed: t.kindId === 'sniper' ? 22 : t.kindId === 'cannon' ? 9 : 14,
+              color: t.turret,
+              kindId: t.kindId,
+              ang: offsetAng,
+              spreadOffset: offsetAng,
+              life: 90,
+            });
+          }
         }
       }
 
@@ -962,14 +1024,22 @@ window.StickFightGame = (function () {
         p.x += (dx / d) * p.speed;
         p.y += (dy / d) * p.speed;
         if (d < 12) {
-          // direct hit
-          p.target.hp -= p.dmg;
-          spawnPopup(state, p.target.x, p.target.y - 18, Math.round(p.dmg), p.color || '#ffd76a');
+          // direct hit. Sniper L3 (crit) does ×1.5 on every shot.
+          const finalDmg = p.crit ? p.dmg * 1.5 : p.dmg;
+          p.target.hp -= finalDmg;
+          spawnPopup(state, p.target.x, p.target.y - 18, Math.round(finalDmg),
+            p.crit ? '#ffd84a' : (p.color || '#ffd76a'), p.crit);
           SFX.enemyHit();
           if (p.slow) {
             p.target.slowFor = p.slow.durSec * 60;
             p.target.slowFactor = p.slow.factor;
             spawnParticles(state, p.target.x, p.target.y, '#a5f3ff', 5, 0.8);
+          }
+          // Frost Deep Freeze: chance to fully freeze on hit (factor ~ 0)
+          if (p.kindId === 'frost' && Math.random() < (p.freezeChance || 0)) {
+            p.target.slowFor = 90;
+            p.target.slowFactor = 0.05;
+            spawnPopup(state, p.target.x, p.target.y - 30, 'FROZEN', '#a5f3ff', true);
           }
           // splash
           if (p.splash > 0) {
@@ -1659,14 +1729,62 @@ window.StickFightGame = (function () {
   // ===== TOWER DEFENSE HELPERS =====
   // Tower types with distinct visuals + stats
   const TD_TOWER_KINDS = [
-    { id:'basic',  name:'Archer',  cost:60,  range:140, atkCd:18, dmg:10, color:'#3a4a78', turret:'#5bf0e8', desc:'Cheap fast single shot.' },
-    { id:'sniper', name:'Sniper',  cost:140, range:280, atkCd:50, dmg:30, color:'#1a3a2a', turret:'#5bff8a', desc:'Long range, big damage.' },
-    { id:'cannon', name:'Cannon',  cost:180, range:120, atkCd:60, dmg:24, color:'#5a3a1a', turret:'#ff9a3c', desc:'Splash damage hits area.' },
-    { id:'frost',  name:'Frost',   cost:100, range:130, atkCd:30, dmg:6,  color:'#1a4a78', turret:'#a5f3ff', desc:'Slows enemies for 2s.' },
-    { id:'laser',  name:'Laser',   cost:200, range:170, atkCd:0,  dmg:0.25, color:'#3a1a3a', turret:'#ff3df6', desc:'Continuous beam.' },
-    { id:'tesla',  name:'Tesla',   cost:220, range:140, atkCd:50, dmg:14, color:'#1a1a4a', turret:'#7c5cff', desc:'Chain lightning (3 jumps).' },
-    { id:'poison', name:'Poison',  cost:120, range:130, atkCd:42, dmg:5,  color:'#2a3a1a', turret:'#7bff5a', desc:'Damage over time 3s.' },
-    { id:'sun',    name:'Gold Mine', cost:260, range:0, atkCd:300, dmg:0, color:'#7a5a14', turret:'#ffd76a', desc:'+30 gold every 5s.' },
+    { id:'basic',  name:'Archer',  cost:60,  range:140, atkCd:18, dmg:10, color:'#3a4a78', turret:'#5bf0e8',
+      desc:'Cheap fast single-shot. Reliable starter tower.',
+      upgrades:[
+        '+60% damage, +15% range, +15% fire rate',
+        'Twin Bows: fires TWO arrows per shot',
+      ]
+    },
+    { id:'sniper', name:'Sniper',  cost:140, range:280, atkCd:50, dmg:30, color:'#1a3a2a', turret:'#5bff8a',
+      desc:'Massive range, big single damage.',
+      upgrades:[
+        '+60% damage, +15% range, +15% fire rate',
+        'Armor Piercing: shots ignore armor + crit on every hit',
+      ]
+    },
+    { id:'cannon', name:'Cannon',  cost:180, range:120, atkCd:60, dmg:24, color:'#5a3a1a', turret:'#ff9a3c',
+      desc:'Lobs cannonballs with area splash damage.',
+      upgrades:[
+        '+60% damage, +20% splash radius',
+        'Heavy Shell: splash also briefly knocks back/slows enemies',
+      ]
+    },
+    { id:'frost',  name:'Frost',   cost:100, range:130, atkCd:30, dmg:6,  color:'#1a4a78', turret:'#a5f3ff',
+      desc:'Slows every enemy it hits for 2 seconds.',
+      upgrades:[
+        '+0.5s slow, +60% damage, stronger slow factor',
+        'Deep Freeze: 20% chance to fully FREEZE on hit',
+      ]
+    },
+    { id:'laser',  name:'Laser',   cost:200, range:170, atkCd:0,  dmg:0.25, color:'#3a1a3a', turret:'#ff3df6',
+      desc:'Continuous beam — locks on and melts.',
+      upgrades:[
+        '+60% damage per tick, +15% range',
+        'Prism Split: beam chains to a SECOND nearby enemy',
+      ]
+    },
+    { id:'tesla',  name:'Tesla',   cost:220, range:140, atkCd:50, dmg:14, color:'#1a1a4a', turret:'#7c5cff',
+      desc:'Chain lightning bounces between 3 enemies.',
+      upgrades:[
+        '+60% damage per arc, +15% range',
+        'Overload: jumps to 5 enemies + each hit briefly stuns',
+      ]
+    },
+    { id:'poison', name:'Poison',  cost:120, range:130, atkCd:42, dmg:5,  color:'#2a3a1a', turret:'#7bff5a',
+      desc:'Coats targets in poison. Damage over 3 seconds.',
+      upgrades:[
+        '+60% damage, longer DoT, faster fire rate',
+        'Plague: poison spreads to nearby enemies on death',
+      ]
+    },
+    { id:'sun',    name:'Gold Mine', cost:260, range:0, atkCd:300, dmg:0, color:'#7a5a14', turret:'#ffd76a',
+      desc:'Passive — generates +30 gold every 5 seconds.',
+      upgrades:[
+        'Output doubles: +60 gold every 5s',
+        'Bonanza: 2x payout every cycle ( +120 gold every 5s )',
+      ]
+    },
   ];
   // ---------- TD path layouts ----------
   // Each layout returns a list of waypoints from the left edge (entry) to
@@ -1776,8 +1894,35 @@ window.StickFightGame = (function () {
   // Tower-upgrade panel is FIXED to the top-right corner of the canvas so the
   // buttons never move, never overlap towers, and are always reachable.
   // Click hit-test and draw use this SAME rect.
+  // Top-center area: Start Wave button + Speed toggle. Shared by draw + click.
+  function tdControlsRect() {
+    const sw = 250, sh = 40;                       // start-wave button
+    const sx = (W - sw) / 2 - 30, sy = 14;
+    const ssw = 50, ssh = 40;                      // speed toggle
+    const ssx = sx + sw + 8, ssy = 14;
+    return { sx, sy, sw, sh, ssx, ssy, ssw, ssh };
+  }
+  function tdControlsClick(state, x, y) {
+    const td = state.td; if (!td) return false;
+    const { sx, sy, sw, sh, ssx, ssy, ssw, ssh } = tdControlsRect();
+    // Speed toggle
+    if (x >= ssx && x < ssx + ssw && y >= ssy && y < ssy + ssh) {
+      td.speed = (td.speed || 1) === 1 ? 2 : 1;
+      return true;
+    }
+    // Start Wave (only active when waveReady)
+    if (td.waveReady && x >= sx && x < sx + sw && y >= sy && y < sy + sh) {
+      td.waveReady = false;
+      td.waveTimer = 30; // small lead-in delay
+      return true;
+    }
+    // Click inside the controls strip but not on a button → consume
+    if (x >= sx && x < ssx + ssw && y >= sy && y < sy + sh) return true;
+    return false;
+  }
+
   function tdUpgradePanelRect(/* t */) {
-    const PW = 300, PH = 200;
+    const PW = 320, PH = 310;
     const px = W - PW - 14;
     const py = 90;
     return { px, py, PW, PH };
@@ -1785,8 +1930,9 @@ window.StickFightGame = (function () {
   // Sub-rects for the two big buttons + close button. Shared by click & draw.
   function tdUpgradePanelBtns() {
     const { px, py, PW, PH } = tdUpgradePanelRect();
-    const upX = px + 14, upY = py + 64, upW = PW - 28, upH = 52;
-    const slX = px + 14, slY = py + 126, slW = PW - 28, slH = 46;
+    // Header (46) + desc section (~50) + perk section (~70) = ~166 px before buttons
+    const upX = px + 14, upY = py + 170, upW = PW - 28, upH = 52;
+    const slX = px + 14, slY = py + 232, slW = PW - 28, slH = 46;
     const cxX = px + PW - 34, cxY = py + 8, cxW = 26, cxH = 26;
     return { px, py, PW, PH, upX, upY, upW, upH, slX, slY, slW, slH, cxX, cxY, cxW, cxH };
   }
@@ -1838,11 +1984,61 @@ window.StickFightGame = (function () {
     if (td.gold < cost) return;
     td.gold -= cost;
     t.level++;
-    t.dmg     = Math.round(t.dmg * 1.6);
-    t.range   = Math.round(t.range * 1.15);
-    t.atkRate = Math.max(8, Math.round(t.atkRate * 0.85));
-    if (t.splash > 0) t.splash = Math.round(t.splash * 1.2);
-    if (t.slow) t.slow.durSec += 0.5;
+    // Level 2: scaling upgrade — bigger numbers, no new ability.
+    // Level 3: tower-specific PERK that meaningfully changes behavior.
+    if (t.level === 2) {
+      t.dmg     = Math.round(t.dmg * 1.6);
+      t.range   = Math.round(t.range * 1.15);
+      t.atkRate = Math.max(8, Math.round(t.atkRate * 0.85));
+      if (t.splash > 0) t.splash = Math.round(t.splash * 1.2);
+      if (t.slow) { t.slow.durSec += 0.5; t.slow.factor = Math.max(0.35, t.slow.factor - 0.1); }
+      if (t.kindId === 'sun') t.payout = 60; // doubles base output
+    } else if (t.level === 3) {
+      // L3 perks per tower kind.
+      switch (t.kindId) {
+        case 'basic':
+          t.multishot = 2;                         // Twin Bows: 2 arrows
+          t.dmg = Math.round(t.dmg * 1.2);
+          break;
+        case 'sniper':
+          t.pierce = true;                         // ignores armor
+          t.crit = true;                           // every shot crits (×1.5)
+          t.dmg = Math.round(t.dmg * 1.5);
+          break;
+        case 'cannon':
+          t.splash = Math.round(t.splash * 1.4);   // bigger splash
+          t.slow = { factor: 0.55, durSec: 0.8 };  // brief slow on hit
+          t.dmg = Math.round(t.dmg * 1.3);
+          break;
+        case 'frost':
+          t.freezeChance = 0.20;                   // 20% to fully freeze
+          t.slow = t.slow || { factor:0.5, durSec:2.5 };
+          t.slow.factor = Math.max(0.30, t.slow.factor - 0.15);
+          t.dmg = Math.round(t.dmg * 1.4);
+          break;
+        case 'laser':
+          t.chainCount = 2;                        // beam jumps to 1 extra
+          t.dmg = +(t.dmg * 1.4).toFixed(2);
+          t.range = Math.round(t.range * 1.15);
+          break;
+        case 'tesla':
+          t.chainCount = 5;                        // jumps to 5 enemies
+          t.stunFrames = 8;                        // brief stun on each arc
+          t.dmg = Math.round(t.dmg * 1.3);
+          break;
+        case 'poison':
+          t.plague = true;                         // spreads on enemy death
+          t.dmg = Math.round(t.dmg * 1.5);
+          break;
+        case 'sun':
+          t.payout = 120;                          // 2× payout = 120 gold
+          break;
+        default:
+          t.dmg = Math.round(t.dmg * 1.4);
+          t.range = Math.round(t.range * 1.10);
+          t.atkRate = Math.max(6, Math.round(t.atkRate * 0.85));
+      }
+    }
     SFX.upgrade();
   }
   function tdSellTower(state, t) {
@@ -2622,13 +2818,21 @@ window.StickFightGame = (function () {
       ctx.shadowColor = t.turret || '#a5f3ff'; ctx.shadowBlur = 6;
       ctx.beginPath(); ctx.arc(cx + face * 13, shoulderY + 1, 1.4, 0, Math.PI*2); ctx.fill();
       ctx.shadowBlur = 0;
-      // beam to target
+      // beam to target (and a second beam if Prism Split upgrade is active)
       if (t._beamTarget) {
         ctx.shadowColor = t.turret; ctx.shadowBlur = 12;
         ctx.strokeStyle = t.turret; ctx.lineWidth = 4; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(cx + face * 13, shoulderY + 1); ctx.lineTo(t._beamTarget.x, t._beamTarget.y); ctx.stroke();
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4;
         ctx.beginPath(); ctx.moveTo(cx + face * 13, shoulderY + 1); ctx.lineTo(t._beamTarget.x, t._beamTarget.y); ctx.stroke();
+        if (t._beamTarget2) {
+          // Split beam from the first target to the second.
+          ctx.shadowColor = t.turret; ctx.shadowBlur = 10;
+          ctx.strokeStyle = t.turret; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(t._beamTarget.x, t._beamTarget.y); ctx.lineTo(t._beamTarget2.x, t._beamTarget2.y); ctx.stroke();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(t._beamTarget.x, t._beamTarget.y); ctx.lineTo(t._beamTarget2.x, t._beamTarget2.y); ctx.stroke();
+        }
         ctx.shadowBlur = 0;
       }
 
@@ -2982,6 +3186,38 @@ window.StickFightGame = (function () {
     ctx.restore();
   }
 
+  // Greedy word-wrap helper for canvas text. Renders at most 3 lines of `text`
+  // starting at (x,y), wrapping at width w, line height lh. Returns the next y.
+  function wrapText(ctx, text, x, y, w, lh) {
+    if (!text) return y;
+    const words = String(text).split(/\s+/);
+    let line = '';
+    let lines = 0;
+    for (const word of words) {
+      const trial = line ? line + ' ' + word : word;
+      if (ctx.measureText(trial).width > w && line) {
+        ctx.fillText(line, x, y);
+        y += lh; lines++;
+        if (lines >= 2) {
+          // Truncate remaining into the third line.
+          let rest = word;
+          for (let i = words.indexOf(word) + 1; i < words.length; i++) rest += ' ' + words[i];
+          if (ctx.measureText(rest).width > w) {
+            while (rest.length > 4 && ctx.measureText(rest + '…').width > w) rest = rest.slice(0, -1);
+            rest += '…';
+          }
+          ctx.fillText(rest, x, y);
+          return y + lh;
+        }
+        line = word;
+      } else {
+        line = trial;
+      }
+    }
+    if (line) { ctx.fillText(line, x, y); y += lh; }
+    return y;
+  }
+
   function lighten(hex, amt) {
     // simple lighten
     const m = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -3158,19 +3394,90 @@ window.StickFightGame = (function () {
     ctx.fillStyle = '#5bff8a';
     ctx.beginPath(); ctx.arc(td.path[0].x + 30, td.path[0].y, 8, 0, Math.PI*2); ctx.fill();
     // Base marker (end)
+    // ============ BASE — proper little castle ============
     const end = td.path[td.path.length-1];
-    ctx.fillStyle = '#1a1a2a';
-    ctx.fillRect(end.x - 40, end.y - 40, 40, 80);
-    ctx.fillStyle = '#5bf0e8';
-    ctx.fillRect(end.x - 36, end.y - 36, 32, 6);
-    ctx.fillStyle = '#fff';
-    ctx.font = "700 11px 'Bebas Neue'"; ctx.textAlign = 'center';
-    ctx.fillText('BASE', end.x - 20, end.y);
-    // Base HP pips
-    for (let i = 0; i < 30; i++) {
-      ctx.fillStyle = i < td.baseHp ? '#5bff8a' : '#3a3a3a';
-      ctx.fillRect(end.x - 38 + (i % 10) * 4, end.y - 28 + Math.floor(i/10)*4, 3, 3);
+    const bx = end.x - 6, by = end.y;
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.beginPath(); ctx.ellipse(bx, by + 38, 38, 6, 0, 0, Math.PI*2); ctx.fill();
+    // Bedrock plinth
+    ctx.fillStyle = '#5a4632';
+    ctx.fillRect(bx - 44, by + 28, 88, 10);
+    ctx.fillStyle = '#3a2e22';
+    ctx.fillRect(bx - 44, by + 36, 88, 4);
+    // Castle wall (stone gradient)
+    const wallG = ctx.createLinearGradient(0, by - 30, 0, by + 30);
+    wallG.addColorStop(0, '#bfb39e');
+    wallG.addColorStop(1, '#7a6f5a');
+    ctx.fillStyle = wallG;
+    ctx.fillRect(bx - 40, by - 12, 80, 42);
+    // Stone block detailing — horizontal mortar lines
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1;
+    for (let row = 0; row < 4; row++) {
+      const yy = by - 12 + row * 11;
+      ctx.beginPath(); ctx.moveTo(bx - 40, yy); ctx.lineTo(bx + 40, yy); ctx.stroke();
+      // Stagger vertical seams
+      for (let col = 0; col < 5; col++) {
+        const xx = bx - 40 + col * 16 + ((row % 2) ? 8 : 0);
+        ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy + 11); ctx.stroke();
+      }
     }
+    // Crenellations along the top
+    ctx.fillStyle = '#9a8e76';
+    for (let i = 0; i < 7; i++) {
+      const cxx = bx - 38 + i * 12;
+      ctx.fillRect(cxx, by - 22, 8, 10);
+    }
+    // Inner shadow under crenellations
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.fillRect(bx - 40, by - 12, 80, 3);
+    // Wooden gate
+    const gateG = ctx.createLinearGradient(0, by, 0, by + 28);
+    gateG.addColorStop(0, '#7a4a1f');
+    gateG.addColorStop(1, '#3a2410');
+    ctx.fillStyle = gateG;
+    ctx.beginPath();
+    ctx.moveTo(bx - 14, by + 30);
+    ctx.lineTo(bx - 14, by + 8);
+    ctx.quadraticCurveTo(bx, by - 6, bx + 14, by + 8);
+    ctx.lineTo(bx + 14, by + 30);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#1a0a04'; ctx.lineWidth = 1.4; ctx.stroke();
+    // Gate planks
+    ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const px = bx - 9 + i * 9;
+      ctx.beginPath(); ctx.moveTo(px, by + 4); ctx.lineTo(px, by + 30); ctx.stroke();
+    }
+    // Gate iron studs
+    ctx.fillStyle = '#cfd6e8';
+    ctx.beginPath(); ctx.arc(bx - 10, by + 12, 1.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx + 10, by + 12, 1.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx - 10, by + 22, 1.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx + 10, by + 22, 1.3, 0, Math.PI*2); ctx.fill();
+    // Flag pole + flag
+    ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(bx, by - 22); ctx.lineTo(bx, by - 40); ctx.stroke();
+    ctx.fillStyle = '#ff4d2e';
+    ctx.beginPath();
+    ctx.moveTo(bx, by - 40);
+    ctx.lineTo(bx + 14, by - 36);
+    ctx.lineTo(bx, by - 30);
+    ctx.closePath(); ctx.fill();
+
+    // Base HP bar (above castle)
+    const hpRatio = Math.max(0, td.baseHp / 30);
+    const bw = 80, bh = 7;
+    const bX = bx - bw/2, bY = by - 56;
+    ctx.fillStyle = '#1a1a22';
+    ctx.fillRect(bX - 1, bY - 1, bw + 2, bh + 2);
+    ctx.fillStyle = '#3a3a44';
+    ctx.fillRect(bX, bY, bw, bh);
+    ctx.fillStyle = hpRatio > 0.5 ? '#5bff8a' : (hpRatio > 0.25 ? '#ffd76a' : '#ff5b5b');
+    ctx.fillRect(bX, bY, bw * hpRatio, bh);
+    ctx.fillStyle = '#fff';
+    ctx.font = "700 10px 'Bebas Neue'"; ctx.textAlign = 'center';
+    ctx.fillText(`HP ${Math.max(0, td.baseHp)} / 30`, bx, bY - 3);
 
     // Towers (per-kind visuals) with shadow and depth
     for (const t of td.towers) {
@@ -3228,6 +3535,27 @@ window.StickFightGame = (function () {
       ctx.fillStyle = '#fff';
       ctx.font = "700 16px 'Rajdhani'"; ctx.textAlign = 'center';
       ctx.fillText('×', cxX + cxW/2, cxY + cxH - 7);
+
+      // ====== Tower description block ======
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'var(--ink-3)';
+      ctx.fillStyle = '#c9b4dc';
+      ctx.font = "600 11px 'Rajdhani'";
+      ctx.fillText('DESCRIPTION', px + 14, py + 60);
+      ctx.fillStyle = '#fbeacc';
+      ctx.font = "500 12.5px 'Rajdhani'";
+      wrapText(ctx, kind.desc || '', px + 14, py + 76, PW - 28, 15);
+
+      // ====== Next-upgrade preview ======
+      const upgIdx = (t.level || 1) - 1; // upgrades[0] = L1→L2, upgrades[1] = L2→L3
+      const nextDesc = (kind.upgrades && kind.upgrades[upgIdx]) || null;
+      ctx.fillStyle = isMaxed ? '#5bff8a' : '#ffd76a';
+      ctx.font = "600 11px 'Rajdhani'";
+      ctx.fillText(isMaxed ? 'MAXED OUT' : `NEXT UPGRADE (LV ${t.level + 1})`, px + 14, py + 122);
+      ctx.fillStyle = isMaxed ? '#aaffc4' : '#fff';
+      ctx.font = "500 12.5px 'Rajdhani'";
+      wrapText(ctx, isMaxed ? 'Already at the highest level.' : (nextDesc || 'Improved stats'),
+        px + 14, py + 138, PW - 28, 15);
 
       // UPGRADE button (big)
       ctx.fillStyle = canUpg ? '#ff9a3c' : (isMaxed ? 'rgba(91,255,138,.18)' : 'rgba(120,120,140,.25)');
@@ -3506,6 +3834,39 @@ window.StickFightGame = (function () {
       ctx.fillStyle = '#7a6a92';
       ctx.fillText(td.endless ? 'ENDLESS' : 'CAMPAIGN', 200, 58);
     }
+
+    // ============ START WAVE + SPEED CONTROLS (top-center) ============
+    const { sx:swX, sy:swY, sw:swW, sh:swH, ssx:spX, ssy:spY, ssw:spW, ssh:spH } = tdControlsRect();
+    // Start Wave button — only shown while waiting to start the next wave.
+    if (td.waveReady) {
+      const pulse = (Math.sin(state.frame * 0.18) + 1) * 0.5;
+      ctx.fillStyle = `rgba(91,255,138,${0.85 + pulse * 0.15})`;
+      ctx.fillRect(swX, swY, swW, swH);
+      ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 2;
+      ctx.strokeRect(swX, swY, swW, swH);
+      ctx.fillStyle = '#0a2614';
+      ctx.font = "700 18px 'Bebas Neue'"; ctx.textAlign = 'center';
+      ctx.fillText(`▶ START WAVE ${td.waveNum}`, swX + swW/2, swY + 26);
+    } else {
+      // Subtle status panel — wave is running.
+      ctx.fillStyle = 'rgba(8,4,18,.5)';
+      ctx.fillRect(swX, swY, swW, swH);
+      ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(swX, swY, swW, swH);
+      ctx.fillStyle = '#c9b4dc';
+      ctx.font = "700 14px 'Bebas Neue'"; ctx.textAlign = 'center';
+      ctx.fillText(`WAVE IN PROGRESS · ${td.enemies.length + td.spawnLeft} LEFT`, swX + swW/2, swY + 24);
+    }
+    // Speed toggle (1x / 2x)
+    const fast = (td.speed || 1) >= 2;
+    ctx.fillStyle = fast ? '#ff9a3c' : 'rgba(8,4,18,.7)';
+    ctx.fillRect(spX, spY, spW, spH);
+    ctx.strokeStyle = fast ? '#ffd76a' : 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(spX, spY, spW, spH);
+    ctx.fillStyle = fast ? '#1a1a22' : '#fff';
+    ctx.font = "700 18px 'Bebas Neue'"; ctx.textAlign = 'center';
+    ctx.fillText(fast ? '2×' : '1×', spX + spW/2, spY + 27);
 
     // Help banner — only shown when no tower is selected (otherwise the
     // upgrade/sell panel takes this top-right slot).

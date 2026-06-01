@@ -105,7 +105,65 @@ window.GameData = (function () {
       // Wipe namespaced keys for that user.
       ['sf_coins_v1','sf_owned_v1','sf_friends_v1','sf_trades_v1','sf_redeemed_v1']
         .forEach(k => localStorage.removeItem(k + '__' + name));
+      // Wipe profile meta for that user.
+      localStorage.removeItem('sf_profile_meta_v1__' + name);
     } catch(e){}
+  }
+
+  // ----- Profile meta: password (hashed) + avatar (preset id) -----
+  // Avatars are picked from a curated emoji-ish list — small, no images needed.
+  const AVATARS = ['🥷','🧙','🦊','🐉','🐈','🐼','🦄','👻','🤖','🦸','🧛','🧚','🐯','🐧','🐸','🐵','🐶','🐙','🍄','🍕','⚡','🔥','💎','⭐'];
+  function getProfileMeta(name) {
+    name = name || getUser();
+    try {
+      const raw = localStorage.getItem('sf_profile_meta_v1__' + name);
+      return raw ? JSON.parse(raw) : {};
+    } catch(e){ return {}; }
+  }
+  function setProfileMeta(name, meta) {
+    name = name || getUser();
+    try { localStorage.setItem('sf_profile_meta_v1__' + name, JSON.stringify(meta || {})); } catch(e){}
+  }
+  // Pad-and-mix string hash — not cryptographic, just to avoid storing
+  // passwords in clear text. localStorage is anyone-with-devtools accessible
+  // anyway; this is for casual sibling/classmate protection only.
+  function hashPw(s) {
+    if (!s) return '';
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h * 16777619) >>> 0;
+    }
+    let h2 = 5381 >>> 0;
+    for (let i = s.length - 1; i >= 0; i--) {
+      h2 = ((h2 << 5) + h2 + s.charCodeAt(i)) >>> 0;
+    }
+    return ('00000000' + h.toString(16)).slice(-8) + ('00000000' + h2.toString(16)).slice(-8);
+  }
+  function setPassword(name, password) {
+    const meta = getProfileMeta(name);
+    if (password) meta.pw = hashPw(password);
+    else delete meta.pw;
+    setProfileMeta(name, meta);
+  }
+  function hasPassword(name) {
+    const m = getProfileMeta(name);
+    return !!m.pw;
+  }
+  function verifyPassword(name, password) {
+    const m = getProfileMeta(name);
+    if (!m.pw) return true;  // no password set
+    return m.pw === hashPw(password || '');
+  }
+  function setAvatar(name, avatar) {
+    const meta = getProfileMeta(name);
+    if (avatar && AVATARS.includes(avatar)) meta.avatar = avatar;
+    else delete meta.avatar;
+    setProfileMeta(name, meta);
+  }
+  function getAvatar(name) {
+    const m = getProfileMeta(name);
+    return m.avatar || null;
   }
   // Namespace helper: default user uses bare keys (so existing progress
   // is preserved), other users get a per-user suffix.
@@ -538,5 +596,7 @@ window.GameData = (function () {
     getTrades, executeTrade,
     // accounts
     getUser, setUser, listUsers, deleteUser, DEFAULT_USER,
+    AVATARS, getAvatar, setAvatar,
+    setPassword, hasPassword, verifyPassword,
   };
 })();

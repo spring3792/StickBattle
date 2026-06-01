@@ -144,7 +144,7 @@
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
     onOpenFriends, onOpenTrade, onOpenProfile, onPreviewSet }) {
     // Chip helper — icon only on narrow, icon+label otherwise
-    const Chip = ({ icon, label, onClick, color, glow }) => (
+    const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
         title={label}
         style={{
@@ -156,7 +156,8 @@
           boxShadow: glow ? `0 0 18px ${color}44` : 'none',
           cursor:'pointer',
         }}>
-        <Icon id={icon} size={14} color={color || 'var(--ink)'}/>
+        {emoji ? <span style={{ fontSize:16, lineHeight:1 }}>{emoji}</span>
+               : <Icon id={icon} size={14} color={color || 'var(--ink)'}/>}
         <span>{label}</span>
       </button>
     );
@@ -179,7 +180,8 @@
             }}>
               <Icon id="coin" size={14} color="#ffd76a"/> {coins.toLocaleString()}
             </span>
-            <Chip icon="friend"   label={D.getUser()} onClick={onOpenProfile} color="#a07bff"/>
+            <Chip icon={D.getAvatar(D.getUser()) ? null : 'friend'} emoji={D.getAvatar(D.getUser())}
+              label={D.getUser()} onClick={onOpenProfile} color="#a07bff"/>
             <Chip icon="gift"     label="Crates"   onClick={onOpenCrates}    color="#ff9a3c" glow/>
             <Chip icon="users"    label="Friends"  onClick={onOpenFriends}   color="#7bff8a"/>
             <Chip icon="trade"    label="Trade"    onClick={onOpenTrade}     color="#ffd84a"/>
@@ -2203,62 +2205,147 @@
     );
   }
 
+  function ProfileAvatar({ name, size = 40 }) {
+    const avatar = D.getAvatar(name);
+    const initial = (name || '?').slice(0, 1).toUpperCase();
+    return (
+      <div style={{ width:size, height:size, borderRadius:'50%',
+        background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
+        display:'grid', placeItems:'center', color:'#fff',
+        fontFamily:"'Bebas Neue'", fontSize:size * 0.55,
+        flexShrink:0 }}>
+        {avatar || initial}
+      </div>
+    );
+  }
+
   function ProfileModal({ onClose, onSwitch }) {
     const [active, setActive] = useState(D.getUser());
     const [newName, setNewName] = useState('');
+    const [newPw, setNewPw] = useState('');
+    const [newAvatar, setNewAvatar] = useState(null);
+    const [pwPrompt, setPwPrompt] = useState(null); // { name, input, error }
+    const [editPw, setEditPw] = useState('');       // change password for active
     const users = D.listUsers();
+    const [, force] = useState(0);
+    const rerender = () => force(n => n + 1);
+
     function pickUser(name) {
+      if (D.hasPassword(name) && name !== active) {
+        setPwPrompt({ name, input:'', error:'' });
+        return;
+      }
       D.setUser(name);
       setActive(name);
       onSwitch && onSwitch();
+    }
+    function tryPassword() {
+      if (!pwPrompt) return;
+      if (D.verifyPassword(pwPrompt.name, pwPrompt.input)) {
+        D.setUser(pwPrompt.name);
+        setActive(pwPrompt.name);
+        setPwPrompt(null);
+        onSwitch && onSwitch();
+      } else {
+        setPwPrompt({ ...pwPrompt, error:'Wrong password' });
+      }
     }
     function createUser() {
       const clean = (newName || '').trim().slice(0, 20);
       if (!clean) return;
       D.setUser(clean);
+      if (newPw) D.setPassword(clean, newPw);
+      if (newAvatar) D.setAvatar(clean, newAvatar);
       setActive(clean);
-      setNewName('');
+      setNewName(''); setNewPw(''); setNewAvatar(null);
       onSwitch && onSwitch();
     }
     function removeUser(name) {
       if (name === active) return;
       if (!confirm(`Delete profile "${name}" and all of its progress?`)) return;
       D.deleteUser(name);
-      // Force re-render
       setActive(D.getUser());
+      rerender();
     }
+    function applyEdit() {
+      D.setPassword(active, editPw || '');
+      setEditPw('');
+      rerender();
+    }
+    function changeAvatar(emoji) {
+      D.setAvatar(active, emoji);
+      rerender();
+    }
+
     return (
       <div style={{ position:'fixed', inset:0, zIndex:50,
         background:'rgba(0,0,0,.6)', display:'grid', placeItems:'center', backdropFilter:'blur(4px)' }}>
-        <div className="panel" style={{ width:'min(520px,92vw)' }}>
+        <div className="panel" style={{ width:'min(560px,94vw)', maxHeight:'90vh', overflowY:'auto' }}>
           <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
             <div>
               <div className="title-art" style={{ fontSize:'clamp(28px,3.4vw,42px)', lineHeight:1 }}>PROFILES</div>
               <div style={{ color:'var(--ink-2)', fontSize:13, marginTop:4 }}>
-                Each profile keeps its own coins, owned cosmetics, friends, and trades.
+                Each profile keeps its own coins, cosmetics, friends, and progress.
               </div>
             </div>
             <button className="btn ghost sm" onClick={onClose}>
               <Icon id="x" size={14}/>
             </button>
           </div>
+
+          {/* Active profile + avatar/password edit */}
           <div className="section-card" style={{ marginBottom:10 }}>
             <div className="sc-h">Active</div>
-            <div className="row" style={{ gap:10, alignItems:'center' }}>
-              <div style={{ width:44, height:44, borderRadius:'50%',
-                background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
-                display:'grid', placeItems:'center', color:'#fff',
-                fontFamily:"'Bebas Neue'", fontSize:24 }}>
-                {(active || '?').slice(0,1).toUpperCase()}
-              </div>
+            <div className="row" style={{ gap:10, alignItems:'center', marginBottom:10 }}>
+              <ProfileAvatar name={active} size={44}/>
               <div style={{ flex:1 }}>
                 <div style={{ fontWeight:800, fontSize:18 }}>{active}</div>
                 <div style={{ fontSize:11, color:'var(--ink-3)' }}>
-                  {D.getCoins().toLocaleString()} coins · {D.getOwned().size} owned · {D.getFriends().length} friends
+                  {D.getCoins().toLocaleString()} coins · {D.getOwned().size} owned · {D.hasPassword(active) ? '🔒 password set' : '🔓 no password'}
                 </div>
               </div>
             </div>
+            {/* Avatar picker */}
+            <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>Avatar</div>
+            <div className="row" style={{ gap:4, flexWrap:'wrap', marginBottom:10 }}>
+              {D.AVATARS.map(emoji => (
+                <button key={emoji}
+                  onClick={() => changeAvatar(emoji)}
+                  style={{ width:36, height:36, fontSize:20, borderRadius:8,
+                    background: D.getAvatar(active) === emoji ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                    border: `1.5px solid ${D.getAvatar(active) === emoji ? 'var(--fire-2)' : 'var(--line)'}`,
+                    cursor:'pointer' }}>
+                  {emoji}
+                </button>
+              ))}
+              <button onClick={() => changeAvatar(null)}
+                style={{ width:36, height:36, fontSize:14, borderRadius:8,
+                  background: !D.getAvatar(active) ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                  border: `1.5px solid ${!D.getAvatar(active) ? 'var(--fire-2)' : 'var(--line)'}`,
+                  cursor:'pointer', color:'var(--ink)' }}>
+                {active.slice(0,1).toUpperCase()}
+              </button>
+            </div>
+            {/* Password edit */}
+            <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>
+              Password {D.hasPassword(active) ? '(change or clear)' : '(optional)'}
+            </div>
+            <div className="row" style={{ gap:8 }}>
+              <input type="password" placeholder={D.hasPassword(active) ? '••••••' : 'No password'}
+                value={editPw}
+                onChange={e => setEditPw(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && applyEdit()}
+                style={{ flex:1 }}/>
+              <button className="btn sm" onClick={applyEdit}>
+                <Icon id="check" size={12}/> Save
+              </button>
+            </div>
+            <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:4 }}>
+              Local-only (not real account security). Leave blank + Save to remove password.
+            </div>
           </div>
+
+          {/* Switcher */}
           <div className="section-card" style={{ marginBottom:10 }}>
             <div className="sc-h">Switch profile</div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -2267,13 +2354,10 @@
                   padding:'6px 10px', background: u === active ? 'rgba(255,154,60,.15)' : 'rgba(255,255,255,.04)',
                   border:`1px solid ${u === active ? 'var(--fire-2)' : 'var(--line)'}`,
                   borderRadius:8 }}>
-                  <div style={{ width:32, height:32, borderRadius:'50%',
-                    background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
-                    display:'grid', placeItems:'center', color:'#fff',
-                    fontFamily:"'Bebas Neue'", fontSize:18 }}>
-                    {u.slice(0,1).toUpperCase()}
+                  <ProfileAvatar name={u} size={32}/>
+                  <div style={{ flex:1, fontWeight:600 }}>
+                    {u} {D.hasPassword(u) && <span style={{ fontSize:10, color:'var(--ink-3)' }}> 🔒</span>}
                   </div>
-                  <div style={{ flex:1, fontWeight:600 }}>{u}</div>
                   {u !== active && (
                     <button className="btn sm" onClick={() => pickUser(u)}>Use</button>
                   )}
@@ -2287,23 +2371,66 @@
               ))}
             </div>
           </div>
+
+          {/* Create new */}
           <div className="section-card" style={{ marginBottom:0 }}>
             <div className="sc-h">Create new profile</div>
-            <div className="row" style={{ gap:8 }}>
-              <input type="text" placeholder="Username (max 20 chars)" value={newName}
+            <div className="row" style={{ gap:8, marginBottom:8 }}>
+              <input type="text" placeholder="Username (max 20)" value={newName}
                 onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && createUser()}
                 maxLength={20}
                 style={{ flex:1 }}/>
+              <input type="password" placeholder="Password (optional)" value={newPw}
+                onChange={e => setNewPw(e.target.value)}
+                style={{ flex:1 }}/>
+            </div>
+            <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>Pick an avatar</div>
+            <div className="row" style={{ gap:4, flexWrap:'wrap', marginBottom:10 }}>
+              {D.AVATARS.slice(0, 12).map(emoji => (
+                <button key={emoji}
+                  onClick={() => setNewAvatar(emoji)}
+                  style={{ width:32, height:32, fontSize:18, borderRadius:6,
+                    background: newAvatar === emoji ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                    border: `1.5px solid ${newAvatar === emoji ? 'var(--fire-2)' : 'var(--line)'}`,
+                    cursor:'pointer' }}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <div className="row">
               <button className="btn sm" disabled={!newName.trim()} onClick={createUser}>
                 <Icon id="check" size={12}/> Create + use
               </button>
-            </div>
-            <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
-              New profiles start with 250 coins and the starter cosmetics.
+              <span style={{ fontSize:11, color:'var(--ink-3)', marginLeft:8 }}>
+                Starts with 250 coins.
+              </span>
             </div>
           </div>
         </div>
+
+        {/* Password prompt overlay */}
+        {pwPrompt && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)',
+            display:'grid', placeItems:'center', zIndex:60 }}>
+            <div className="panel" style={{ width:'min(380px,90vw)', textAlign:'center' }}>
+              <div style={{ fontSize:36, marginBottom:8 }}>🔒</div>
+              <div className="title-art" style={{ fontSize:28, marginBottom:4 }}>{pwPrompt.name.toUpperCase()}</div>
+              <div style={{ color:'var(--ink-2)', fontSize:13, marginBottom:14 }}>Enter password to log in</div>
+              <input type="password" autoFocus placeholder="Password"
+                value={pwPrompt.input}
+                onChange={e => setPwPrompt({ ...pwPrompt, input: e.target.value, error:'' })}
+                onKeyDown={e => e.key === 'Enter' && tryPassword()}
+                style={{ width:'100%', textAlign:'center', fontSize:16, padding:'10px 14px', marginBottom:8 }}/>
+              {pwPrompt.error && (
+                <div style={{ color:'#ff8a9a', fontSize:12, marginBottom:8 }}>{pwPrompt.error}</div>
+              )}
+              <div className="row" style={{ justifyContent:'center', gap:8 }}>
+                <button className="btn ghost sm" onClick={() => setPwPrompt(null)}>Cancel</button>
+                <button className="btn sm" onClick={tryPassword}>Log in</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
