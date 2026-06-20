@@ -379,15 +379,15 @@ window.StickFightGame = (function () {
           path,
           pathId: path._id || 'zigzag',
           pathLen: pathTotalLen(path),
-          baseHp: 30,
-          gold: 250,
-          waveNum: 1, waveTimer: 60 * 4,
+          baseHp: 25,                    // base goes down faster — fewer mistakes allowed
+          gold: 200,                     // smaller starting bank
+          waveNum: 1, waveTimer: 60 * 3,
           enemies: [], towers: [], proj: [],
-          spawnLeft: 5,
-          maxWaves: 7,
+          spawnLeft: 9,                  // wave 1 already has ~9 enemies
+          maxWaves: 10,                  // longer campaign for the harder waves to land
           baseLost: false,
           endless: !!tdEndless,
-          maxWaves: tdEndless ? 9999 : 7,
+          maxWaves: tdEndless ? 9999 : 10,
           // Wave control: player must press "Start Wave" between waves so they
           // can place/upgrade at their own pace. `waveReady` = waiting for start.
           waveReady: true,
@@ -847,24 +847,26 @@ window.StickFightGame = (function () {
       if (td.spawnLeft > 0 && !td.waveReady) {
         td.waveTimer--;
         if (td.waveTimer <= 0) {
-          td.waveTimer = Math.max(18, 55 - td.waveNum * 2);
+          // Tighter spawn cadence: enemies arrive faster as waves go up.
+          td.waveTimer = Math.max(14, 50 - td.waveNum * 2.4);
           td.spawnLeft--;
-          // Random enemy type, weighted by wave
+          // Random enemy type, weighted by wave. Types now appear earlier so
+          // even the first few waves mix in fast/armor/boss enemies.
           const roll = Math.random();
           let type = 'basic';
-          if (td.waveNum >= 5 && roll < 0.1) type = 'boss';
-          else if (td.waveNum >= 3 && roll < 0.25) type = 'armor';
-          else if (td.waveNum >= 2 && roll < 0.35) type = 'fast';
+          if (td.waveNum >= 4 && roll < 0.14) type = 'boss';
+          else if (td.waveNum >= 2 && roll < 0.30) type = 'armor';
+          else if (td.waveNum >= 1 && roll < 0.40) type = 'fast';
           const wave = td.waveNum;
           let stats;
           if (type === 'fast') {
-            stats = { hp:18 + wave*6,  speed:1.6 + wave*0.06, r:11, color:'#ffd76a' };
+            stats = { hp:26 + wave*9,  speed:1.75 + wave*0.08, r:11, color:'#ffd76a' };
           } else if (type === 'armor') {
-            stats = { hp:50 + wave*16, speed:0.6 + wave*0.04, r:18, color:'#b6bedc' };
+            stats = { hp:70 + wave*22, speed:0.7 + wave*0.05, r:18, color:'#b6bedc' };
           } else if (type === 'boss') {
-            stats = { hp:160 + wave*40, speed:0.5 + wave*0.03, r:24, color:'#b03a8a' };
+            stats = { hp:220 + wave*55, speed:0.55 + wave*0.04, r:24, color:'#b03a8a' };
           } else {
-            stats = { hp:22 + wave*9, speed:1.0 + wave*0.07, r:14, color:'#ff5b5b' };
+            stats = { hp:28 + wave*12, speed:1.05 + wave*0.08, r:14, color:'#ff5b5b' };
           }
           td.enemies.push({
             type, t: 0,
@@ -881,10 +883,11 @@ window.StickFightGame = (function () {
         } else if (!td.waveReady) {
           // Wave finished — move to next and idle until player clicks Start.
           td.waveNum++;
-          td.spawnLeft = 5 + Math.min(td.waveNum, 12);
-          td.waveTimer = 60 * 4;
-          td.gold += 60;
-          td.cpuGold = (td.cpuGold || 0) + 40; // bot also gets bonus
+          // Bigger waves: ~7 + 2× scaled, capped at 30.
+          td.spawnLeft = 7 + Math.min(td.waveNum * 2, 25);
+          td.waveTimer = 60 * 3;
+          td.gold += 45;
+          td.cpuGold = (td.cpuGold || 0) + 30; // bot also gets bonus
           if (human) human.score = td.waveNum - 1;
           td.waveReady = true;          // pause for the player to prepare
           // Toast every 5 waves; always toast the first cleared.

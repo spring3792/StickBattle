@@ -181,7 +181,7 @@
               <Icon id="coin" size={14} color="#ffd76a"/> {coins.toLocaleString()}
             </span>
             <Chip icon={D.getAvatar(D.getUser()) ? null : 'friend'} emoji={D.getAvatar(D.getUser())}
-              label={D.getUser()} onClick={onOpenProfile} color="#a07bff"/>
+              label={D.getDisplayName(D.getUser())} onClick={onOpenProfile} color="#a07bff"/>
             <Chip icon="gift"     label="Crates"   onClick={onOpenCrates}    color="#ff9a3c" glow/>
             <Chip icon="users"    label="Friends"  onClick={onOpenFriends}   color="#7bff8a"/>
             <Chip icon="trade"    label="Trade"    onClick={onOpenTrade}     color="#ffd84a"/>
@@ -2531,6 +2531,37 @@
     );
   }
 
+  // Tiny editor: text input + Save button. The display name is namespaced per
+  // user via D.setDisplayName(user, name). onSave is called after persisting.
+  function DisplayNameEditor({ active, onSave }) {
+    const [value, setValue] = useState(() => D.getDisplayName(active) === active ? '' : D.getDisplayName(active));
+    const [saved, setSaved] = useState(false);
+    function save() {
+      D.setDisplayName(active, value);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1200);
+      if (onSave) onSave();
+    }
+    return (
+      <div>
+        <div className="row" style={{ gap:8 }}>
+          <input type="text" maxLength={24}
+            placeholder={`Default: ${active}`}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && save()}
+            style={{ flex:1 }}/>
+          <button className="btn sm" onClick={save}>
+            <Icon id="check" size={12}/> {saved ? 'Saved' : 'Save'}
+          </button>
+        </div>
+        <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:4 }}>
+          Shown in chat, friends list, and the top bar. Leave blank to use your username.
+        </div>
+      </div>
+    );
+  }
+
   function ProfileModal({ onClose, onSwitch, onLogout }) {
     const [active, setActive] = useState(D.getUser());
     const [newName, setNewName] = useState('');
@@ -2617,6 +2648,13 @@
                 </div>
               </div>
             </div>
+            {/* Display name editor — cosmetic alias shown in the chip + everywhere
+                the player's name is rendered. Username is the unchangeable login id. */}
+            <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>
+              Display name
+            </div>
+            <DisplayNameEditor active={active} onSave={() => { setActive(D.getUser()); }}/>
+            <div style={{ height:10 }}/>
             {/* Avatar picker */}
             <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>Avatar</div>
             <div className="row" style={{ gap:4, flexWrap:'wrap', marginBottom:10 }}>

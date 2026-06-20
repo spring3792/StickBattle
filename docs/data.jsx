@@ -171,6 +171,19 @@ window.GameData = (function () {
     const m = getProfileMeta(name);
     return m.avatar || null;
   }
+  // Display name — purely cosmetic alias for the username. Shown in the chip,
+  // friends/trade panels, results screens. Username remains the login identity.
+  function setDisplayName(name, displayName) {
+    const meta = getProfileMeta(name);
+    const clean = (displayName || '').trim().slice(0, 24);
+    if (clean) meta.displayName = clean;
+    else delete meta.displayName;
+    setProfileMeta(name, meta);
+  }
+  function getDisplayName(name) {
+    const m = getProfileMeta(name);
+    return m.displayName || name || '';
+  }
   // Namespace helper: default user uses bare keys (so existing progress
   // is preserved), other users get a per-user suffix.
   function ns(key) {
@@ -603,6 +616,7 @@ window.GameData = (function () {
     // accounts
     getUser, setUser, listUsers, userExists, deleteUser, DEFAULT_USER,
     AVATARS, getAvatar, setAvatar,
+    getDisplayName, setDisplayName,
     setPassword, hasPassword, verifyPassword,
   };
 })();
