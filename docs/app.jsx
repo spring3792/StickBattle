@@ -1518,12 +1518,7 @@
                 border: `1.5px solid ${u === pickedName ? 'var(--fire-2)' : 'var(--line)'}`,
                 color:'var(--ink)', fontFamily:'inherit',
               }}>
-              <div style={{ width:30, height:30, borderRadius:'50%',
-                background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
-                display:'grid', placeItems:'center', color:'#fff',
-                fontFamily:"'Bebas Neue'", fontSize:16 }}>
-                {D.getAvatar(u) || u.slice(0,1).toUpperCase()}
-              </div>
+              <ProfileAvatar name={u} size={32} />
               <div style={{ flex:1, textAlign:'left', fontWeight:700 }}>{u}</div>
               {D.hasPassword(u) && <span style={{ fontSize:11, color:'var(--ink-3)' }}>🔒</span>}
             </button>
@@ -2471,16 +2466,67 @@
     );
   }
 
+  // Detailed profile-avatar disc: glossy gradient with halo, beveled ring,
+  // online indicator dot, and a soft inner highlight. Same visual recipe at
+  // every size — the chip avatar (small), the login list (medium) and the
+  // profile modal hero (large) all look polished.
   function ProfileAvatar({ name, size = 40 }) {
     const avatar = D.getAvatar(name);
     const initial = (name || '?').slice(0, 1).toUpperCase();
+    const ringW = Math.max(2, size * 0.07);
     return (
-      <div style={{ width:size, height:size, borderRadius:'50%',
-        background:'linear-gradient(135deg, #a07bff, #5b3ed8)',
-        display:'grid', placeItems:'center', color:'#fff',
-        fontFamily:"'Bebas Neue'", fontSize:size * 0.55,
-        flexShrink:0 }}>
-        {avatar || initial}
+      <div style={{
+        width:size, height:size, position:'relative', flexShrink:0,
+      }}>
+        {/* halo glow */}
+        <div style={{
+          position:'absolute', inset:`-${size*0.12}px`, borderRadius:'50%',
+          background:'radial-gradient(circle, rgba(160,123,255,.55) 0%, rgba(160,123,255,0) 70%)',
+          pointerEvents:'none',
+        }}/>
+        {/* outer ring */}
+        <div style={{
+          position:'absolute', inset:0, borderRadius:'50%',
+          background:'conic-gradient(from 220deg, #ffd76a, #ff9a3c, #a07bff, #5cf6ff, #5bff8a, #ffd76a)',
+          padding: ringW,
+          boxShadow:'0 4px 16px rgba(0,0,0,.45), inset 0 1px 2px rgba(255,255,255,.4)',
+        }}>
+          <div style={{
+            width:'100%', height:'100%', borderRadius:'50%',
+            background:'radial-gradient(circle at 30% 25%, #c9aaff 0%, #a07bff 30%, #5b3ed8 70%, #2a1b78 100%)',
+            display:'grid', placeItems:'center',
+            color:'#fff', fontFamily:"'Bebas Neue'", fontSize:size * 0.5,
+            textShadow:'0 2px 4px rgba(0,0,0,.5), 0 0 8px rgba(255,255,255,.2)',
+            position:'relative', overflow:'hidden',
+          }}>
+            {/* inner highlight crescent (gives a glossy 3D look) */}
+            <div style={{
+              position:'absolute', top: -size*0.4, left: -size*0.4,
+              width: size, height: size, borderRadius:'50%',
+              background:'radial-gradient(circle, rgba(255,255,255,.45) 0%, rgba(255,255,255,0) 60%)',
+              pointerEvents:'none',
+            }}/>
+            {/* the emoji / initial */}
+            <span style={{ position:'relative', zIndex:2, lineHeight:1, transform:'translateY(2%)' }}>
+              {avatar || initial}
+            </span>
+            {/* bottom shine */}
+            <div style={{
+              position:'absolute', bottom: -size*0.1, left:'10%', right:'10%', height: size*0.25,
+              background:'radial-gradient(ellipse at center, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 70%)',
+              borderRadius:'50%', pointerEvents:'none',
+            }}/>
+          </div>
+        </div>
+        {/* online-style indicator dot */}
+        <div style={{
+          position:'absolute', bottom: 0, right: 0,
+          width: Math.max(8, size*0.22), height: Math.max(8, size*0.22),
+          borderRadius:'50%',
+          background:'#5bff8a',
+          border: `${Math.max(1.5, size*0.05)}px solid #1a0e22`,
+          boxShadow:'0 0 6px rgba(91,255,138,.7)',
+        }}/>
       </div>
     );
   }

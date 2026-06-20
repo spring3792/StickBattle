@@ -1824,6 +1824,25 @@ window.StickFightGame = (function () {
       });
     }
   }
+  // Shift a hex/css color toward black (amt<0) or white (amt>0). amt∈[-1,1].
+  // Used by the detailed-stickman renderer to derive shading tones from a base.
+  function shadeColor(hex, amt) {
+    // Quick path: only handle #rrggbb. Returns input if not parseable.
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return hex || '#888';
+    const n = parseInt(m[1], 16);
+    let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+    if (amt >= 0) {
+      r = Math.round(r + (255 - r) * amt);
+      g = Math.round(g + (255 - g) * amt);
+      b = Math.round(b + (255 - b) * amt);
+    } else {
+      const k = 1 + amt; // amt is negative
+      r = Math.round(r * k); g = Math.round(g * k); b = Math.round(b * k);
+    }
+    return `rgb(${r},${g},${b})`;
+  }
+
   // Floating combat-text popup: drifts upward and fades. `crit` makes it big & yellow.
   function spawnPopup(state, x, y, text, color, crit=false) {
     if (!state.popups) state.popups = [];
@@ -3170,41 +3189,224 @@ window.StickFightGame = (function () {
     ctx.beginPath(); ctx.arc(cx + 11, gy + 9, 1.4, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + 4, gy + 11, 1.4, 0, Math.PI*2); ctx.fill();
 
-    // -- skin/outfit color depends on tower kind --
+    // ============ DETAILED TOWER STICKMAN BODY ============
+    // Two-tone colors derived from tower kind colour.
     const tinted = t.color || '#c9a25f';
-    const dark = '#1a1622';
+    const dark = '#0a0612';
+    const skin = '#f0c489';
+    const skinShade = '#c89564';
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-    // -- body --
-    const headR = 5;
-    const headY = gy - 26 + bob;
-    const torsoTop = headY + headR;
+    // Geometry
+    const headR = 6;
+    const headY = gy - 28 + bob;
+    const torsoTop = headY + headR - 1;
     const torsoBot = gy - 4;
-    ctx.strokeStyle = tinted; ctx.lineWidth = 2.8;
-    // torso
+    const bootY = gy + 4;
+
+    // -- shaded torso (jersey-style) — capsule with gradient and outline --
+    const torsoG = ctx.createLinearGradient(cx - 6, torsoTop, cx + 6, torsoBot);
+    torsoG.addColorStop(0, tinted);
+    // Darker side for shape — mix toward dark.
+    torsoG.addColorStop(1, shadeColor(tinted, -0.45));
+    ctx.fillStyle = torsoG;
     ctx.beginPath();
-    ctx.moveTo(cx, torsoTop);
-    ctx.lineTo(cx, torsoBot);
+    ctx.moveTo(cx - 4.5, torsoTop + 1);
+    ctx.quadraticCurveTo(cx - 5.8, (torsoTop + torsoBot) / 2, cx - 3.6, torsoBot - 1);
+    ctx.quadraticCurveTo(cx, torsoBot + 2, cx + 3.6, torsoBot - 1);
+    ctx.quadraticCurveTo(cx + 5.8, (torsoTop + torsoBot) / 2, cx + 4.5, torsoTop + 1);
+    ctx.quadraticCurveTo(cx, torsoTop - 2, cx - 4.5, torsoTop + 1);
+    ctx.closePath();
+    ctx.fill();
+    // Body outline + faint highlight strip
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.1;
     ctx.stroke();
-    // legs (slight stance)
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(cx, torsoBot);
-    ctx.lineTo(cx - 4, gy + 3);
-    ctx.moveTo(cx, torsoBot);
-    ctx.lineTo(cx + 4, gy + 3);
+    ctx.moveTo(cx - 2.5, torsoTop + 2);
+    ctx.lineTo(cx - 2.5, torsoBot - 4);
     ctx.stroke();
-    // head
-    ctx.fillStyle = tinted;
-    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.stroke();
-    // eyes (face direction)
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(cx + face * 1.4, headY - 0.6, 1.1, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx + face * 1.4 + 1.4, headY - 0.6, 1.1, 0, Math.PI*2); ctx.fill();
+
+    // -- legs (slight stance) with boot ovals --
+    ctx.strokeStyle = dark; ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(cx - 1.5, torsoBot - 1); ctx.lineTo(cx - 4, bootY);
+    ctx.moveTo(cx + 1.5, torsoBot - 1); ctx.lineTo(cx + 4, bootY);
+    ctx.stroke();
+    // boots
     ctx.fillStyle = dark;
-    ctx.beginPath(); ctx.arc(cx + face * 1.6, headY - 0.6, 0.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx + face * 1.6 + 1.4, headY - 0.6, 0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx - 4, bootY, 3, 1.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + 4, bootY, 3, 1.5, 0, 0, Math.PI*2); ctx.fill();
+
+    // -- head with gradient skin + outline + hair tuft --
+    const headG = ctx.createRadialGradient(cx - face*1.5, headY - 2, 1, cx, headY, headR);
+    headG.addColorStop(0, '#ffe2bd');
+    headG.addColorStop(0.6, skin);
+    headG.addColorStop(1, skinShade);
+    ctx.fillStyle = headG;
+    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.stroke();
+    // tiny ear
+    ctx.fillStyle = skinShade;
+    ctx.beginPath(); ctx.arc(cx - face * (headR - 0.5), headY + 0.5, 1.1, 0, Math.PI*2); ctx.fill();
+    // hair tuft (front)
+    ctx.fillStyle = shadeColor(tinted, -0.6);
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, headY - 3);
+    ctx.quadraticCurveTo(cx, headY - 7, cx + 4, headY - 3);
+    ctx.quadraticCurveTo(cx + 2, headY - 4, cx, headY - 4);
+    ctx.quadraticCurveTo(cx - 2, headY - 4, cx - 4, headY - 3);
+    ctx.closePath(); ctx.fill();
+
+    // -- eyes (whites + iris + pupil + brow + tiny mouth) --
+    const eX1 = cx + face * 1.4, eX2 = cx + face * 1.4 + 1.8;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(eX1, headY - 0.4, 1.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eX2, headY - 0.4, 1.3, 0, Math.PI*2); ctx.fill();
+    // iris colored by tower turret color (subtle)
+    ctx.fillStyle = t.turret || '#5cf6ff';
+    ctx.beginPath(); ctx.arc(eX1 + face * 0.2, headY - 0.4, 0.9, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eX2 + face * 0.2, headY - 0.4, 0.9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.beginPath(); ctx.arc(eX1 + face * 0.3, headY - 0.4, 0.55, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eX2 + face * 0.3, headY - 0.4, 0.55, 0, Math.PI*2); ctx.fill();
+    // brows (slight angle for determination)
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(eX1 - 1, headY - 2.4); ctx.lineTo(eX1 + 1, headY - 1.8);
+    ctx.moveTo(eX2 - 1, headY - 1.8); ctx.lineTo(eX2 + 1, headY - 2.4);
+    ctx.stroke();
+    // mouth (small line)
+    ctx.strokeStyle = '#7a3a3a'; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx + face * 1.6, headY + 2.2); ctx.lineTo(cx + face * 3, headY + 2.2);
+    ctx.stroke();
+
+    // ============ Per-kind HAT / HEADGEAR ============
+    // Draws BEHIND arms+weapon so the weapon overlays correctly.
+    if (kind === 'basic') {
+      // Archer hood: feathered green hood with brim
+      ctx.fillStyle = '#2c5a2a';
+      ctx.beginPath();
+      ctx.moveTo(cx - headR - 1, headY + 1);
+      ctx.quadraticCurveTo(cx, headY - headR - 5, cx + headR + 1, headY + 1);
+      ctx.quadraticCurveTo(cx, headY - 2, cx - headR - 1, headY + 1);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1; ctx.stroke();
+      // Feather
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath();
+      ctx.moveTo(cx + face * (headR - 2), headY - headR - 2);
+      ctx.lineTo(cx + face * (headR + 4), headY - headR - 6);
+      ctx.lineTo(cx + face * (headR + 1), headY - headR - 1);
+      ctx.closePath(); ctx.fill();
+    } else if (kind === 'sniper') {
+      // Sniper: dark beanie with night-vision rim
+      ctx.fillStyle = '#1a2a1a';
+      ctx.beginPath();
+      ctx.arc(cx, headY - 1, headR + 0.5, Math.PI, 0); ctx.lineTo(cx + headR + 0.5, headY + 0.5);
+      ctx.lineTo(cx - headR - 0.5, headY + 0.5); ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(cx - headR, headY + 1); ctx.lineTo(cx + headR, headY + 1); ctx.stroke();
+    } else if (kind === 'cannon') {
+      // Pirate tricorn
+      ctx.fillStyle = '#1a1010';
+      ctx.beginPath();
+      ctx.moveTo(cx - headR - 4, headY - 1);
+      ctx.lineTo(cx, headY - headR - 6);
+      ctx.lineTo(cx + headR + 4, headY - 1);
+      ctx.quadraticCurveTo(cx, headY - 4, cx - headR - 4, headY - 1);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#7a3a1a'; ctx.lineWidth = 0.8; ctx.stroke();
+      // skull pin
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(cx, headY - 4, 1.4, 0, Math.PI*2); ctx.fill();
+    } else if (kind === 'frost') {
+      // Wizard hat with snowflake
+      ctx.fillStyle = '#2a4a8a';
+      ctx.beginPath();
+      ctx.moveTo(cx - headR - 1, headY + 0.5);
+      ctx.lineTo(cx + face * 1, headY - headR - 10);
+      ctx.lineTo(cx + headR + 1, headY + 0.5);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#a5f3ff'; ctx.lineWidth = 0.9; ctx.stroke();
+      // brim band
+      ctx.fillStyle = '#a5f3ff';
+      ctx.fillRect(cx - headR - 1, headY + 0.5, (headR + 1) * 2, 1.5);
+    } else if (kind === 'laser') {
+      // Cyber visor + neck collar
+      ctx.fillStyle = '#5a1a5a';
+      ctx.fillRect(cx - headR - 1, headY - 2, (headR + 1) * 2, 3);
+      ctx.fillStyle = '#ff3df6';
+      ctx.fillRect(cx - headR + 0.5, headY - 1.5, (headR - 0.5) * 2, 1.5);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx - 1, headY - 1.2, 2, 0.6);
+      // Antenna
+      ctx.strokeStyle = '#ff3df6'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, headY - headR); ctx.lineTo(cx, headY - headR - 5); ctx.stroke();
+      ctx.fillStyle = '#ff3df6';
+      ctx.beginPath(); ctx.arc(cx, headY - headR - 6, 1.2, 0, Math.PI*2); ctx.fill();
+    } else if (kind === 'tesla') {
+      // Spike-helmet with arcs
+      ctx.fillStyle = '#3a3a5a';
+      ctx.beginPath();
+      ctx.arc(cx, headY - 1, headR + 1, Math.PI, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#7c5cff'; ctx.lineWidth = 0.8; ctx.stroke();
+      // Single spike
+      ctx.fillStyle = '#7c5cff';
+      ctx.beginPath();
+      ctx.moveTo(cx - 2, headY - headR);
+      ctx.lineTo(cx, headY - headR - 7);
+      ctx.lineTo(cx + 2, headY - headR);
+      ctx.closePath(); ctx.fill();
+      // arcs around (only when about to fire)
+      if ((t.atkCd || 0) < 8) {
+        ctx.strokeStyle = '#7c5cff'; ctx.lineWidth = 1.2;
+        for (let k = 0; k < 3; k++) {
+          const a = (state.frame * 0.3 + k * 2.1) % (Math.PI*2);
+          const r = headR + 4;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * r, headY + Math.sin(a) * r);
+          ctx.lineTo(cx + Math.cos(a) * (r + 2), headY + Math.sin(a) * (r + 2));
+          ctx.stroke();
+        }
+      }
+    } else if (kind === 'poison') {
+      // Gas mask: round filter on the face
+      ctx.fillStyle = '#2a3a14';
+      ctx.beginPath();
+      ctx.arc(cx, headY - 1, headR + 0.8, Math.PI, 0); ctx.lineTo(cx + headR + 0.8, headY + 1);
+      ctx.lineTo(cx - headR - 0.8, headY + 1); ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 0.9; ctx.stroke();
+      // Lens (cover eyes)
+      ctx.fillStyle = '#7bff5a';
+      ctx.beginPath(); ctx.arc(cx - 1.8, headY - 0.4, 1.6, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 1.8, headY - 0.4, 1.6, 0, Math.PI*2); ctx.fill();
+      // Filter at mouth
+      ctx.fillStyle = '#1a2a08';
+      ctx.beginPath(); ctx.arc(cx + face * 2, headY + 3, 2, 0, Math.PI*2); ctx.fill();
+    } else if (kind === 'sun') {
+      // Miner hard hat + headlamp
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath();
+      ctx.arc(cx, headY - 1, headR + 0.8, Math.PI, 0); ctx.lineTo(cx + headR + 0.8, headY + 0.5);
+      ctx.lineTo(cx - headR - 0.8, headY + 0.5); ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 0.9; ctx.stroke();
+      // Headlamp glow
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(cx + face * 2, headY - 2, 1.2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = `rgba(255,238,150,${0.4 + Math.sin(state.frame*0.1)*0.2})`;
+      ctx.beginPath();
+      ctx.moveTo(cx + face * 2, headY - 2);
+      ctx.lineTo(cx + face * 10, headY - 8);
+      ctx.lineTo(cx + face * 10, headY + 4);
+      ctx.closePath(); ctx.fill();
+    }
 
     // -- arms + weapon (varies by kind) --
     const shoulderY = torsoTop + 4;
@@ -4255,45 +4457,107 @@ window.StickFightGame = (function () {
       ctx.beginPath(); ctx.ellipse(e.x, feetY + 4, 10 * s, 3, 0, 0, Math.PI * 2); ctx.fill();
 
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = tinted; ctx.lineWidth = 3.4 * s;
-      // Torso
+      // ============ DETAILED ENEMY STICKMAN ============
+      // Shaded gradient body (jersey-style capsule) replaces the flat torso line.
+      const baseColor = e.color || tinted;
+      const isAlt = e.slowFor > 0 || e.poisonFor > 0;
+      const bodyTop = headY + 6 * s;
+      const bodyBot = hipY + 2 * s;
+      const bodyW = 7 * s;
+      const torsoG = ctx.createLinearGradient(e.x - bodyW, bodyTop, e.x + bodyW, bodyBot);
+      torsoG.addColorStop(0, isAlt ? tinted : shadeColor(baseColor, 0.3));
+      torsoG.addColorStop(1, shadeColor(isAlt ? tinted : baseColor, -0.5));
+      ctx.fillStyle = torsoG;
       ctx.beginPath();
-      ctx.moveTo(e.x, headY + 8 * s);
-      ctx.lineTo(e.x, hipY);
+      ctx.moveTo(e.x - bodyW * 0.6, bodyTop);
+      ctx.quadraticCurveTo(e.x - bodyW, (bodyTop + bodyBot) / 2, e.x - bodyW * 0.5, bodyBot);
+      ctx.quadraticCurveTo(e.x, bodyBot + 2 * s, e.x + bodyW * 0.5, bodyBot);
+      ctx.quadraticCurveTo(e.x + bodyW, (bodyTop + bodyBot) / 2, e.x + bodyW * 0.6, bodyTop);
+      ctx.quadraticCurveTo(e.x, bodyTop - 2 * s, e.x - bodyW * 0.6, bodyTop);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
       ctx.stroke();
+      // shirt highlight strip
+      ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(e.x - 3 * s, bodyTop + 1.5 * s);
+      ctx.lineTo(e.x - 3 * s, bodyBot - 1.5 * s);
+      ctx.stroke();
+
       // Arms — counter-swing the legs along the facing axis. In side view
       // arms swing forward (+face) when their opposite leg swings forward.
       const armSwing = Math.sin(phase) * 5 * s;
       const shoulderY = headY + 10 * s;
+      ctx.strokeStyle = shadeColor(baseColor, -0.35); ctx.lineWidth = 3.2 * s;
       ctx.beginPath();
-      // Back arm forward when front leg goes back (i.e. -stride direction)
       ctx.moveTo(e.x, shoulderY);
       ctx.lineTo(e.x + face * armSwing, shoulderY + 11 * s);
-      // Front arm opposite
       ctx.moveTo(e.x, shoulderY);
       ctx.lineTo(e.x - face * armSwing, shoulderY + 11 * s);
       ctx.stroke();
+      // Gloves (hand circles)
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.arc(e.x + face * armSwing, shoulderY + 11 * s, 1.6 * s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(e.x - face * armSwing, shoulderY + 11 * s, 1.6 * s, 0, Math.PI*2); ctx.fill();
+
       // Legs — one strides forward (+face*stride) while the other plants back.
+      ctx.strokeStyle = shadeColor(baseColor, -0.55); ctx.lineWidth = 3.6 * s;
       ctx.beginPath();
-      // Front leg
       ctx.moveTo(e.x, hipY);
       ctx.lineTo(e.x + face * stride, feetY - liftFront);
-      // Back leg
       ctx.moveTo(e.x, hipY);
       ctx.lineTo(e.x - face * stride, feetY - liftBack);
       ctx.stroke();
-      // Head
-      ctx.fillStyle = tinted;
-      ctx.beginPath(); ctx.arc(e.x, headY, 8 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = dark; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.arc(e.x, headY, 8 * s, 0, Math.PI * 2); ctx.stroke();
-      // Eyes
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(e.x - 2.4 * s, headY - 0.8, 1.5 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.x + 2.4 * s, headY - 0.8, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+      // Boots
       ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.arc(e.x - 2.4 * s, headY - 0.8, 0.7 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.x + 2.4 * s, headY - 0.8, 0.7 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(e.x + face * stride, feetY - liftFront + 1, 3.2 * s, 1.6 * s, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(e.x - face * stride, feetY - liftBack + 1, 3.2 * s, 1.6 * s, 0, 0, Math.PI*2); ctx.fill();
+
+      // Head — gradient skin with outline
+      const headSkin = '#f0c489';
+      const headG = ctx.createRadialGradient(e.x - face*2, headY - 2, 1, e.x, headY, 8 * s);
+      headG.addColorStop(0, '#ffe2bd');
+      headG.addColorStop(0.6, isAlt ? tinted : headSkin);
+      headG.addColorStop(1, isAlt ? shadeColor(tinted, -0.3) : '#c89564');
+      ctx.fillStyle = headG;
+      ctx.beginPath(); ctx.arc(e.x, headY, 8 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(e.x, headY, 8 * s, 0, Math.PI * 2); ctx.stroke();
+      // Ear
+      ctx.fillStyle = '#c89564';
+      ctx.beginPath(); ctx.arc(e.x - face * 7 * s, headY + 1, 1.5 * s, 0, Math.PI*2); ctx.fill();
+      // Hair tuft
+      ctx.fillStyle = shadeColor(baseColor, -0.6);
+      ctx.beginPath();
+      ctx.moveTo(e.x - 5 * s, headY - 5 * s);
+      ctx.quadraticCurveTo(e.x, headY - 9 * s, e.x + 5 * s, headY - 5 * s);
+      ctx.quadraticCurveTo(e.x + 2 * s, headY - 6 * s, e.x, headY - 6 * s);
+      ctx.quadraticCurveTo(e.x - 2 * s, headY - 6 * s, e.x - 5 * s, headY - 5 * s);
+      ctx.closePath(); ctx.fill();
+      // Eyes (whites + iris + pupil + brow)
+      const eyeY = headY - 0.8, eyeR = 1.8 * s;
+      const eL = e.x - 2.4 * s, eR = e.x + 2.4 * s;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(eL, eyeY, eyeR, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(eR, eyeY, eyeR, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0a3a5a';
+      ctx.beginPath(); ctx.arc(eL + face * 0.4, eyeY, eyeR * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(eR + face * 0.4, eyeY, eyeR * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.arc(eL + face * 0.6, eyeY, eyeR * 0.42, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(eR + face * 0.6, eyeY, eyeR * 0.42, 0, Math.PI * 2); ctx.fill();
+      // Angry brows (slight V)
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.4 * s;
+      ctx.beginPath();
+      ctx.moveTo(eL - 1.5 * s, eyeY - 3 * s); ctx.lineTo(eL + 1.5 * s, eyeY - 2 * s);
+      ctx.moveTo(eR - 1.5 * s, eyeY - 2 * s); ctx.lineTo(eR + 1.5 * s, eyeY - 3 * s);
+      ctx.stroke();
+      // Mouth (grimace)
+      ctx.strokeStyle = '#7a3a3a'; ctx.lineWidth = 1.1 * s;
+      ctx.beginPath();
+      ctx.moveTo(e.x - 1.8 * s, headY + 3 * s);
+      ctx.quadraticCurveTo(e.x, headY + 2 * s, e.x + 1.8 * s, headY + 3 * s);
+      ctx.stroke();
       // Type-specific accessories
       if (e.type === 'fast') {
         // Motion streaks behind
@@ -4324,6 +4588,22 @@ window.StickFightGame = (function () {
         ctx.fillRect(e.x - 6 * s, headY + 9 * s, 12 * s, 12 * s);
         ctx.strokeStyle = dark; ctx.strokeRect(e.x - 6 * s, headY + 9 * s, 12 * s, 12 * s);
       } else if (e.type === 'boss') {
+        // Demonic crown + flowing cape behind body + glowing aura
+        const pulse = (Math.sin(state.frame*0.08) + 1) * 0.5;
+        ctx.save();
+        ctx.fillStyle = `rgba(255,77,46,${0.12 + pulse*0.12})`;
+        ctx.beginPath(); ctx.arc(e.x, e.y, 30 * s, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        // Cape — sways with walk
+        const cSway = Math.sin(phase) * 3 * s;
+        ctx.fillStyle = '#3a0a08';
+        ctx.beginPath();
+        ctx.moveTo(e.x - 6 * s, headY + 8 * s);
+        ctx.lineTo(e.x - 10 * s + cSway, hipY + 8 * s);
+        ctx.lineTo(e.x + 10 * s + cSway, hipY + 8 * s);
+        ctx.lineTo(e.x + 6 * s, headY + 8 * s);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#8a1a18'; ctx.lineWidth = 1; ctx.stroke();
         // Horns
         ctx.fillStyle = '#5a1a1a';
         ctx.beginPath();
@@ -4337,10 +4617,28 @@ window.StickFightGame = (function () {
         ctx.lineTo(e.x + 3 * s, headY - 5 * s);
         ctx.closePath(); ctx.fill();
         ctx.strokeStyle = dark; ctx.lineWidth = 1.4; ctx.stroke();
-        // Glowing red eyes override
+        // Skull-style face overlay
+        ctx.fillStyle = '#fff4d8';
+        ctx.beginPath(); ctx.arc(e.x, headY, 7 * s, 0, Math.PI*2); ctx.fill();
+        // Glowing eyes override
         ctx.fillStyle = '#ff4d2e';
-        ctx.beginPath(); ctx.arc(e.x - 2.4 * s, headY - 0.8, 1.8 * s, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(e.x + 2.4 * s, headY - 0.8, 1.8 * s, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(eL, eyeY, eyeR + 0.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(eR, eyeY, eyeR + 0.4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffd76a';
+        ctx.beginPath(); ctx.arc(eL, eyeY, 0.6 * s, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(eR, eyeY, 0.6 * s, 0, Math.PI * 2); ctx.fill();
+        // Fangs
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.moveTo(e.x - 1.4 * s, headY + 2 * s);
+        ctx.lineTo(e.x - 0.4 * s, headY + 5 * s);
+        ctx.lineTo(e.x - 0.2 * s, headY + 2 * s);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(e.x + 0.2 * s, headY + 2 * s);
+        ctx.lineTo(e.x + 0.4 * s, headY + 5 * s);
+        ctx.lineTo(e.x + 1.4 * s, headY + 2 * s);
+        ctx.closePath(); ctx.fill();
       }
       // HP pip above head
       const hpRatio = Math.max(0, e.hp / e.maxHp);
