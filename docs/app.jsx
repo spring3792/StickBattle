@@ -5,6 +5,18 @@
   const { useState, useEffect, useMemo, useRef, useCallback } = React;
   const D = window.GameData;
   const G = window.StickFightGame;
+  // Shade a #rrggbb toward black by `amt` (0–1). Used to derive a stroke from
+  // a user-picked stickman colour so the player still has a contrasting edge.
+  function mixToBlack(hex, amt = 0.5) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return '#1a0e22';
+    const n = parseInt(m[1], 16);
+    const k = 1 - amt;
+    const r = Math.round(((n >> 16) & 0xff) * k);
+    const g = Math.round(((n >> 8) & 0xff) * k);
+    const b = Math.round((n & 0xff) * k);
+    return `#${[r,g,b].map(v => v.toString(16).padStart(2,'0')).join('')}`;
+  }
   const Q = window.SFQuestions;
   const { Icon } = window.SFIcons;
 
@@ -111,7 +123,7 @@
   }
 
   // ============== launch screen (revamped) ==============
-  function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onPreviewSet, coins }) {
+  function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins }) {
     const title = D.eduTitle(settings.edu);
     const sub = D.eduSub(settings.edu);
     const allSets = Q.allSets();
@@ -133,6 +145,7 @@
           onOpenSettings={onOpenSettings} onOpenCrates={onOpenCrates}
           onOpenCodes={onOpenCodes} onOpenFriends={onOpenFriends}
           onOpenProfile={onOpenProfile}
+          onOpenQueue={onOpenQueue} queueCount={queueCount}
           onOpenTrade={onOpenTrade} onPreviewSet={onPreviewSet} />
       </div>
     );
@@ -142,7 +155,7 @@
   function NewLaunchUI({ settings, onChange, coins, title, sub, selectedMode,
     readyModes, soonModes, allSets, activeSet,
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
-    onOpenFriends, onOpenTrade, onOpenProfile, onPreviewSet }) {
+    onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet }) {
     // Chip helper — icon only on narrow, icon+label otherwise
     const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
@@ -185,6 +198,8 @@
             <Chip icon="gift"     label="Crates"   onClick={onOpenCrates}    color="#ff9a3c" glow/>
             <Chip icon="users"    label="Friends"  onClick={onOpenFriends}   color="#7bff8a"/>
             <Chip icon="trade"    label="Trade"    onClick={onOpenTrade}     color="#ffd84a"/>
+            <Chip icon="play"     label={`Queue${queueCount ? ` (${queueCount})` : ''}`}
+                  onClick={onOpenQueue} color={queueCount ? '#5cf6ff' : '#7bff8a'}/>
             <Chip icon="sparkle"  label="Codes"    onClick={onOpenCodes}     color="#5bf0e8"/>
             <Chip icon="settings" label="Settings" onClick={onOpenSettings}/>
           </div>
@@ -1295,7 +1310,7 @@
   }
 
   // ============== match results ==============
-  function MatchResults({ profiles, winner, mode, onPlayAgain, onMenu }) {
+  function MatchResults({ profiles, winner, mode, onPlayAgain, onMenu, onNext, queueCount = 0 }) {
     // Solo modes that aren't a points race — only show the human player and a
     // mode-appropriate summary instead of "first to N points".
     const SOLO = ['td', 'golf', 'parkour', 'last'];
@@ -1372,6 +1387,13 @@
             <button className="btn ghost" onClick={onMenu}>
               <Icon id="back" size={14} style={{verticalAlign:'middle', marginRight:6}}/>Menu
             </button>
+            {onNext && (
+              <button className="btn big" onClick={onNext}
+                style={{ background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' }}>
+                <Icon id="play" size={18} style={{verticalAlign:'middle', marginRight:8}}/>
+                Next in Queue ({queueCount})
+              </button>
+            )}
             <button className="btn big" onClick={onPlayAgain}>
               <Icon id="play" size={20} style={{verticalAlign:'middle', marginRight:10}}/>Play Again
             </button>
@@ -1408,6 +1430,13 @@
           <button className="btn ghost" onClick={onMenu}>
             <Icon id="back" size={14} style={{verticalAlign:'middle', marginRight:6}}/>Menu
           </button>
+          {onNext && (
+            <button className="btn big" onClick={onNext}
+              style={{ background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' }}>
+              <Icon id="play" size={18} style={{verticalAlign:'middle', marginRight:8}}/>
+              Next in Queue ({queueCount})
+            </button>
+          )}
           <button className="btn big" onClick={onPlayAgain}>
             <Icon id="play" size={20} style={{verticalAlign:'middle', marginRight:10}}/>Rematch
           </button>
@@ -1647,6 +1676,11 @@
     const [showCodes, setShowCodes] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
     const [showProfile, setShowProfile] = useState(false);
+    const [showQueue, setShowQueue] = useState(false);
+    // Play queue — ordered list of {mode, tdMapId} entries the player wants to
+    // play one after another. When a match ends and the queue is non-empty,
+    // the next entry auto-starts.
+    const [playQueue, setPlayQueue] = useState([]);
     // First-run login gate: any session where the user hasn't explicitly logged
     // in shows the LoginScreen first. Cleared once they pick LOG IN or SIGN UP.
     const [needLogin, setNeedLogin] = useState(() => {
@@ -1680,14 +1714,22 @@
         case '4': count = 4; break;
       }
       const built = [];
+      // Pull the human player's saved profile colour so it seeds slot 0.
+      const savedColor = D.getPlayerColor(D.getUser());
+      const savedName = D.getDisplayName(D.getUser());
       for (let i = 0; i < count; i++) {
         const c = D.PLAYER_COLORS[i];
         const isBot = lockedBots.includes(i);
+        // Slot 0 always belongs to the human unless they locked it as a bot.
+        const isHumanSlot = (i === 0 && !isBot);
+        const useColor = isHumanSlot && savedColor ? savedColor : c.color;
+        // Derive a darker stroke from any custom color (rough approximation).
+        const useDark  = isHumanSlot && savedColor ? mixToBlack(savedColor, 0.55) : c.dark;
         built.push({
           _slot: i, _score: 0, _target: settings.target,
           isBot, lockedBot: isBot,
-          name: isBot ? `CPU ${i+1}` : `Player ${i+1}`,
-          colorId: c.id, color: c.color, darkColor: c.dark,
+          name: isBot ? `CPU ${i+1}` : (isHumanSlot ? savedName : `Player ${i+1}`),
+          colorId: c.id, color: useColor, darkColor: useDark,
           hatId: 'none',    hat:    D.HATS[0],
           outfitId: 'none', outfit: D.OUTFITS[0],
           faceId: 'default',face:   D.FACES[0],
@@ -1819,6 +1861,8 @@
             onPlay={startLobby}
             coins={coins}
             onOpenProfile={() => setShowProfile(true)}
+            onOpenQueue={() => setShowQueue(true)}
+            queueCount={playQueue.length}
             onOpenCrates={() => setShowCrates(true)}
             onOpenCodes={() => setShowCodes(true)}
             onOpenFriends={() => setShowFriends(true)}
@@ -1866,7 +1910,18 @@
         )}
         {stage === 'results' && matchWinner && (
           <MatchResults profiles={profiles} winner={matchWinner} mode={settings.mode}
+            queueCount={playQueue.length}
             onPlayAgain={() => { setMatchWinner(null); startMatch(); }}
+            onNext={playQueue.length > 0 ? () => {
+              const next = playQueue[0];
+              setPlayQueue(playQueue.slice(1));
+              setMatchWinner(null);
+              const newSettings = { ...settings, mode: next.mode };
+              if (next.tdMapId) newSettings.tdMapId = next.tdMapId;
+              setSettings(newSettings);
+              // Defer a tick so settings is committed before startMatch reads it.
+              setTimeout(() => startMatch(), 50);
+            } : null}
             onMenu={() => { setMatchWinner(null); setStage('launch'); }} />
         )}
 
@@ -1950,6 +2005,16 @@
         {showCrates && (
           <CrateModal onClose={() => { setShowCrates(false); refreshCoins(); }}
                       onCoinsChanged={refreshCoins} />
+        )}
+        {showQueue && (
+          <QueueModal
+            queue={playQueue}
+            settings={settings}
+            onClose={() => setShowQueue(false)}
+            onAdd={(item) => setPlayQueue([...playQueue, item])}
+            onRemove={(idx) => setPlayQueue(playQueue.filter((_, i) => i !== idx))}
+            onClear={() => setPlayQueue([])}
+          />
         )}
         {previewSet && (
           <SetPreviewModal set={previewSet} onClose={() => setPreviewSet(null)} />
@@ -2473,6 +2538,7 @@
   function ProfileAvatar({ name, size = 40 }) {
     const avatar = D.getAvatar(name);
     const initial = (name || '?').slice(0, 1).toUpperCase();
+    const customPic = D.getCustomAvatar ? D.getCustomAvatar(name) : null;
     const ringW = Math.max(2, size * 0.07);
     return (
       <div style={{
@@ -2506,10 +2572,18 @@
               background:'radial-gradient(circle, rgba(255,255,255,.45) 0%, rgba(255,255,255,0) 60%)',
               pointerEvents:'none',
             }}/>
-            {/* the emoji / initial */}
-            <span style={{ position:'relative', zIndex:2, lineHeight:1, transform:'translateY(2%)' }}>
-              {avatar || initial}
-            </span>
+            {/* custom uploaded/drawn picture (top priority), else emoji / initial */}
+            {customPic ? (
+              <img src={customPic} alt=""
+                style={{
+                  position:'absolute', inset:0, width:'100%', height:'100%',
+                  objectFit:'cover', borderRadius:'50%', zIndex:2,
+                }}/>
+            ) : (
+              <span style={{ position:'relative', zIndex:2, lineHeight:1, transform:'translateY(2%)' }}>
+                {avatar || initial}
+              </span>
+            )}
             {/* bottom shine */}
             <div style={{
               position:'absolute', bottom: -size*0.1, left:'10%', right:'10%', height: size*0.25,
@@ -2557,6 +2631,320 @@
         </div>
         <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:4 }}>
           Shown in chat, friends list, and the top bar. Leave blank to use your username.
+        </div>
+      </div>
+    );
+  }
+
+  // Upload a file OR draw a freehand picture — both produce a data URL that
+  // becomes the active profile's custom avatar.
+  function CustomAvatarEditor({ active, onChange }) {
+    const fileRef = useRef(null);
+    const [drawing, setDrawing] = useState(false);
+    const current = D.getCustomAvatar(active);
+    function onFile(ev) {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      if (f.size > 1.5 * 1024 * 1024) { alert('Pick an image under 1.5 MB.'); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Re-encode through a canvas so the image is normalised + downsized to
+        // 256×256 max, keeping localStorage happy.
+        const img = new Image();
+        img.onload = () => {
+          const size = 256;
+          const c = document.createElement('canvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          // contain — fill bg, scale, center
+          ctx.fillStyle = '#1a0e22';
+          ctx.fillRect(0, 0, size, size);
+          const k = Math.min(size / img.width, size / img.height);
+          const w = img.width * k, h = img.height * k;
+          ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+          D.setCustomAvatar(active, c.toDataURL('image/png'));
+          onChange && onChange();
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(f);
+    }
+    function clearPic() {
+      D.setCustomAvatar(active, null);
+      onChange && onChange();
+    }
+    return (
+      <div>
+        <div className="row" style={{ gap:8, flexWrap:'wrap' }}>
+          <button className="btn sm" onClick={() => fileRef.current && fileRef.current.click()}>
+            <Icon id="check" size={12}/> Upload Image
+          </button>
+          <input ref={fileRef} type="file" accept="image/*"
+            onChange={onFile} style={{ display:'none' }}/>
+          <button className="btn sm" onClick={() => setDrawing(true)}>
+            <Icon id="check" size={12}/> Draw…
+          </button>
+          {current && (
+            <button className="btn sm ghost" onClick={clearPic}
+              style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+              <Icon id="x" size={12}/> Clear
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:4 }}>
+          Replaces the emoji avatar. Stored locally — 256×256 max.
+        </div>
+        {drawing && (
+          <DrawAvatarModal active={active} onClose={() => setDrawing(false)}
+            onSave={() => { setDrawing(false); onChange && onChange(); }} />
+        )}
+      </div>
+    );
+  }
+
+  // Modal with a 256×256 drawing canvas + colour swatches + brush sizes.
+  // Saves to D.setCustomAvatar(active, dataURL).
+  function DrawAvatarModal({ active, onSave, onClose }) {
+    const canvasRef = useRef(null);
+    const [color, setColor] = useState('#ffd76a');
+    const [brush, setBrush] = useState(6);
+    useEffect(() => {
+      const c = canvasRef.current;
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#1a0e22';
+      ctx.fillRect(0, 0, c.width, c.height);
+      let drawing = false, lastX = 0, lastY = 0;
+      function pos(e) {
+        const r = c.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - r.left) * (c.width / r.width),
+                 y: (t.clientY - r.top) * (c.height / r.height) };
+      }
+      function down(e) { e.preventDefault(); drawing = true; const p = pos(e); lastX = p.x; lastY = p.y; }
+      function move(e) {
+        if (!drawing) return;
+        e.preventDefault();
+        const p = pos(e);
+        ctx.strokeStyle = color; ctx.lineWidth = brush;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+        lastX = p.x; lastY = p.y;
+      }
+      function up() { drawing = false; }
+      c.addEventListener('mousedown', down);
+      c.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+      c.addEventListener('touchstart', down, { passive:false });
+      c.addEventListener('touchmove', move, { passive:false });
+      window.addEventListener('touchend', up);
+      return () => {
+        c.removeEventListener('mousedown', down);
+        c.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        c.removeEventListener('touchstart', down);
+        c.removeEventListener('touchmove', move);
+        window.removeEventListener('touchend', up);
+      };
+    }, [color, brush]);
+    function clear() {
+      const c = canvasRef.current; const ctx = c.getContext('2d');
+      ctx.fillStyle = '#1a0e22';
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    function save() {
+      const c = canvasRef.current;
+      D.setCustomAvatar(active, c.toDataURL('image/png'));
+      onSave && onSave();
+    }
+    const palette = ['#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#5cf6ff','#5bff8a','#fff','#1a0e22'];
+    return (
+      <div style={{ position:'fixed', inset:0, zIndex:120,
+        background:'rgba(0,0,0,.7)', display:'grid', placeItems:'center', padding:14 }}>
+        <div className="panel" style={{ width:'min(380px,94vw)' }}>
+          <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+            <div className="title-art" style={{ fontSize:24 }}>DRAW</div>
+            <button className="btn sm ghost" onClick={onClose}>
+              <Icon id="x" size={12}/> Cancel
+            </button>
+          </div>
+          <canvas ref={canvasRef} width={256} height={256}
+            style={{ width:'100%', height:'auto', aspectRatio:'1', display:'block',
+                     borderRadius:8, border:'2px solid var(--line-2)',
+                     touchAction:'none', cursor:'crosshair', background:'#1a0e22' }}/>
+          <div className="row" style={{ gap:6, marginTop:10, flexWrap:'wrap', alignItems:'center' }}>
+            {palette.map(c => (
+              <button key={c} onClick={() => setColor(c)}
+                style={{ width:28, height:28, borderRadius:'50%', background:c,
+                  border: `3px solid ${color === c ? 'var(--fire-2)' : 'rgba(255,255,255,.15)'}`,
+                  cursor:'pointer' }}/>
+            ))}
+            <div style={{ width:1, height:24, background:'var(--line)' }}/>
+            {[3, 6, 10, 16].map(b => (
+              <button key={b} onClick={() => setBrush(b)}
+                style={{ width:28, height:28, borderRadius:6,
+                  background: brush === b ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                  border: `1.5px solid ${brush === b ? 'var(--fire-2)' : 'var(--line)'}`,
+                  cursor:'pointer', display:'grid', placeItems:'center' }}>
+                <div style={{ width:b, height:b, borderRadius:'50%', background:'var(--ink)' }}/>
+              </button>
+            ))}
+          </div>
+          <div className="row" style={{ gap:8, marginTop:10, justifyContent:'flex-end' }}>
+            <button className="btn sm ghost" onClick={clear}>
+              <Icon id="x" size={12}/> Clear
+            </button>
+            <button className="btn" onClick={save}
+              style={{ background:'linear-gradient(180deg, var(--fire-2), var(--fire-1))', color:'#fff' }}>
+              <Icon id="check" size={14} style={{verticalAlign:'middle', marginRight:6}}/> Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Compact swatch row + "any colour" hex input. Saves into D.setPlayerColor.
+  function StickmanColorPicker({ active, onChange }) {
+    const cur = D.getPlayerColor(active) || '#5cf6ff';
+    const palette = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#ffffff','#1a0e22'];
+    function pick(c) {
+      D.setPlayerColor(active, c);
+      onChange && onChange();
+    }
+    return (
+      <div className="row" style={{ gap:6, alignItems:'center', flexWrap:'wrap' }}>
+        {palette.map(c => (
+          <button key={c} onClick={() => pick(c)}
+            style={{ width:30, height:30, borderRadius:'50%', background:c,
+              border:`3px solid ${cur.toLowerCase() === c.toLowerCase() ? 'var(--fire-2)' : 'rgba(255,255,255,.15)'}`,
+              cursor:'pointer', boxShadow:'0 2px 6px rgba(0,0,0,.4)' }}/>
+        ))}
+        <input type="color" value={cur} onChange={e => pick(e.target.value)}
+          style={{ width:36, height:30, padding:0, border:'1px solid var(--line)',
+                   borderRadius:6, background:'transparent', cursor:'pointer' }}/>
+        <div style={{ fontSize:11, color:'var(--ink-3)' }}>Used as your fight color</div>
+      </div>
+    );
+  }
+
+  // PLAY QUEUE — stack of {mode, tdMapId?} entries that auto-advance through
+  // the Match Results "Next in Queue" button. The user manages the list here.
+  function QueueModal({ queue, settings, onClose, onAdd, onRemove, onClear }) {
+    const MODES = [
+      { id:'fight',   label:'Stick Fight' },
+      { id:'sumo',    label:'Sumo Push' },
+      { id:'koth',    label:'King of the Hill' },
+      { id:'bomb',    label:'Bomb Tag' },
+      { id:'last',    label:'Last Stand' },
+      { id:'parkour', label:'Parkour Race' },
+      { id:'golf',    label:'Mini Golf' },
+      { id:'td',      label:'Tower Defense' },
+    ];
+    const [pickedMode, setPickedMode] = useState(settings.mode || 'fight');
+    const [pickedMap, setPickedMap] = useState('random');
+    const modeLabel = (id) => (MODES.find(m => m.id === id) || {}).label || id;
+    return (
+      <div style={{ position:'fixed', inset:0, zIndex:90,
+        background:'rgba(0,0,0,.65)', display:'grid', placeItems:'center', padding:14 }}>
+        <div className="panel" style={{ width:'min(520px, 94vw)' }}>
+          <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+            <div>
+              <div className="title-art" style={{ fontSize:28, lineHeight:.9 }}>PLAY QUEUE</div>
+              <div className="title-sub">Auto-play your next picks back-to-back</div>
+            </div>
+            <button className="btn sm ghost" onClick={onClose}>
+              <Icon id="x" size={12}/> Close
+            </button>
+          </div>
+
+          {/* Pick mode + map to add */}
+          <div className="section-card" style={{ marginBottom:10 }}>
+            <div className="sc-h">Add to queue</div>
+            <div className="row" style={{ flexWrap:'wrap', gap:6 }}>
+              {MODES.map(m => (
+                <button key={m.id} onClick={() => setPickedMode(m.id)}
+                  className={`pill ${pickedMode === m.id ? 'on' : ''}`}
+                  style={{ border:'none', cursor:'pointer' }}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {pickedMode === 'td' && (
+              <div style={{ marginTop:8 }}>
+                <div style={{ fontSize:11, color:'var(--ink-3)', marginBottom:4 }}>TD MAP</div>
+                <div className="row" style={{ flexWrap:'wrap', gap:6 }}>
+                  <button onClick={() => setPickedMap('random')}
+                    className={`pill ${pickedMap === 'random' ? 'on' : ''}`}
+                    style={{ border:'none', cursor:'pointer' }}>Random</button>
+                  {(G.TD_PATH_IDS || []).map(id => {
+                    const theme = (G.TD_MAP_THEMES || {})[id] || {};
+                    return (
+                      <button key={id} onClick={() => setPickedMap(id)}
+                        className={`pill ${pickedMap === id ? 'on' : ''}`}
+                        style={{ border:'none', cursor:'pointer' }}>
+                        {theme.name || id}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <button className="btn sm" style={{ marginTop:10 }}
+              onClick={() => {
+                const item = { mode: pickedMode };
+                if (pickedMode === 'td') item.tdMapId = pickedMap;
+                onAdd(item);
+              }}>
+              <Icon id="check" size={12}/> + Add to Queue
+            </button>
+          </div>
+
+          {/* Current queue list */}
+          <div className="section-card">
+            <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+              <div className="sc-h" style={{ margin:0 }}>Up next ({queue.length})</div>
+              {queue.length > 0 && (
+                <button className="btn sm ghost" onClick={onClear}
+                  style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                  <Icon id="x" size={11}/> Clear all
+                </button>
+              )}
+            </div>
+            {queue.length === 0 ? (
+              <div style={{ color:'var(--ink-3)', fontSize:13, padding:'10px 0' }}>
+                Queue is empty. Add matches above — they'll auto-play after each result screen.
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {queue.map((q, i) => (
+                  <div key={i} className="row" style={{
+                    gap:10, alignItems:'center', padding:'8px 10px',
+                    background:'rgba(255,255,255,.04)', borderRadius:6,
+                    border:'1px solid var(--line)',
+                  }}>
+                    <div style={{
+                      width:24, height:24, borderRadius:'50%',
+                      background:'rgba(92,246,255,.2)', color:'#5cf6ff',
+                      display:'grid', placeItems:'center', fontWeight:700, fontSize:13,
+                    }}>{i+1}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700 }}>{modeLabel(q.mode)}</div>
+                      {q.tdMapId && q.tdMapId !== 'random' && (
+                        <div style={{ fontSize:11, color:'var(--ink-3)' }}>
+                          {(G.TD_MAP_THEMES && G.TD_MAP_THEMES[q.tdMapId] && G.TD_MAP_THEMES[q.tdMapId].name) || q.tdMapId}
+                        </div>
+                      )}
+                    </div>
+                    <button className="btn sm ghost" onClick={() => onRemove(i)}
+                      style={{ padding:'4px 8px' }}>
+                      <Icon id="x" size={11}/>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -2654,6 +3042,18 @@
               Display name
             </div>
             <DisplayNameEditor active={active} onSave={() => { setActive(D.getUser()); }}/>
+            <div style={{ height:10 }}/>
+            {/* Custom profile picture — upload from disk or draw freehand. */}
+            <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>
+              Custom picture
+            </div>
+            <CustomAvatarEditor active={active} onChange={() => setActive(D.getUser())}/>
+            <div style={{ height:10 }}/>
+            {/* Stickman color — applied to the player's character in fights. */}
+            <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>
+              Stickman color
+            </div>
+            <StickmanColorPicker active={active} onChange={() => setActive(D.getUser())}/>
             <div style={{ height:10 }}/>
             {/* Avatar picker */}
             <div style={{ fontSize:11, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.15em', marginBottom:6 }}>Avatar</div>

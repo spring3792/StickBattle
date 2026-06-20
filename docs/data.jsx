@@ -171,6 +171,36 @@ window.GameData = (function () {
     const m = getProfileMeta(name);
     return m.avatar || null;
   }
+  // Custom profile picture — stored as a data URL (image/png typically). Takes
+  // priority over the avatar emoji + initial when rendering the profile disc.
+  // Size capped to a few hundred KB by the upload/draw paths to keep
+  // localStorage healthy.
+  function setCustomAvatar(name, dataUrl) {
+    const meta = getProfileMeta(name);
+    if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+      meta.pic = dataUrl;
+    } else {
+      delete meta.pic;
+    }
+    setProfileMeta(name, meta);
+  }
+  function getCustomAvatar(name) {
+    const m = getProfileMeta(name);
+    return m.pic || null;
+  }
+  // Stickman color — applied as the default player color when starting matches.
+  // Hex string (e.g. "#5cf6ff"). Falls back to a per-slot default if unset.
+  function setPlayerColor(name, color) {
+    const meta = getProfileMeta(name);
+    if (color && /^#[0-9a-f]{6}$/i.test(color)) meta.color = color;
+    else delete meta.color;
+    setProfileMeta(name, meta);
+  }
+  function getPlayerColor(name) {
+    const m = getProfileMeta(name);
+    return m.color || null;
+  }
+
   // Display name — purely cosmetic alias for the username. Shown in the chip,
   // friends/trade panels, results screens. Username remains the login identity.
   function setDisplayName(name, displayName) {
@@ -617,6 +647,8 @@ window.GameData = (function () {
     getUser, setUser, listUsers, userExists, deleteUser, DEFAULT_USER,
     AVATARS, getAvatar, setAvatar,
     getDisplayName, setDisplayName,
+    getCustomAvatar, setCustomAvatar,
+    getPlayerColor, setPlayerColor,
     setPassword, hasPassword, verifyPassword,
   };
 })();
