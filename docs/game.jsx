@@ -1971,13 +1971,13 @@ window.StickFightGame = (function () {
       ],
       ability:{ id:'toxiccloud', name:'TOXIC CLOUD', desc:'Drops a poison patch on the path for 6 seconds.', cooldownSec:24 },
     },
-    { id:'sun',    name:'Gold Mine', cost:260, range:0, atkCd:300, dmg:0, color:'#7a5a14', turret:'#ffd76a',
-      desc:'Passive — generates +30 gold every 5 seconds.',
+    { id:'sun',    name:'Gold Mine', cost:320, range:0, atkCd:480, dmg:0, color:'#7a5a14', turret:'#ffd76a',
+      desc:'Passive — generates +25 gold every 8 seconds.',
       upgrades:[
-        'Output doubles: +60 gold every 5s',
-        'Bonanza: 2x payout every cycle ( +120 gold every 5s )',
+        'Output up: +45 gold every 8s',
+        'Bonanza: +80 gold every 8s',
       ],
-      ability:{ id:'jackpot', name:'JACKPOT', desc:'Instantly pays out +150 gold.', cooldownSec:30 },
+      ability:{ id:'jackpot', name:'JACKPOT', desc:'Instantly pays out +60 gold.', cooldownSec:50 },
     },
   ];
   // ---------- TD path layouts ----------
@@ -2417,7 +2417,7 @@ window.StickFightGame = (function () {
       t.atkRate = Math.max(8, Math.round(t.atkRate * 0.85));
       if (t.splash > 0) t.splash = Math.round(t.splash * 1.2);
       if (t.slow) { t.slow.durSec += 0.5; t.slow.factor = Math.max(0.35, t.slow.factor - 0.1); }
-      if (t.kindId === 'sun') t.payout = 60; // doubles base output
+      if (t.kindId === 'sun') t.payout = 45; // L2 Gold Mine output
     } else if (t.level === 3) {
       // L3 perks per tower kind.
       switch (t.kindId) {
@@ -2456,7 +2456,7 @@ window.StickFightGame = (function () {
           t.dmg = Math.round(t.dmg * 1.5);
           break;
         case 'sun':
-          t.payout = 120;                          // 2× payout = 120 gold
+          t.payout = 80;                           // L3 Gold Mine output
           break;
         default:
           t.dmg = Math.round(t.dmg * 1.4);
@@ -2580,9 +2580,9 @@ window.StickFightGame = (function () {
         break;
       }
       case 'jackpot': {
-        td.gold += 150;
+        td.gold += 60;
         spawnStarBurst(state, t.x, t.y, '#ffd76a');
-        spawnPopup(state, t.x, t.y - 30, '+150 GOLD!', '#ffd76a');
+        spawnPopup(state, t.x, t.y - 30, '+60 GOLD!', '#ffd76a');
         break;
       }
       default: return false;
@@ -4290,54 +4290,70 @@ window.StickFightGame = (function () {
 
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       // ============ DETAILED ENEMY STICKMAN ============
-      // Shaded gradient body (jersey-style capsule) replaces the flat torso line.
+      // The arms anchor at the SHOULDER edges (sides of torso, not the center)
+      // so they emerge from the silhouette of the body — not from inside it.
       const baseColor = e.color || tinted;
       const isAlt = e.slowFor > 0 || e.poisonFor > 0;
       const bodyTop = headY + 6 * s;
       const bodyBot = hipY + 2 * s;
-      const bodyW = 7 * s;
+      const bodyW = 4.2 * s;                          // slimmer torso so arms hang OUTSIDE it
       const torsoG = ctx.createLinearGradient(e.x - bodyW, bodyTop, e.x + bodyW, bodyBot);
       torsoG.addColorStop(0, isAlt ? tinted : shadeColor(baseColor, 0.3));
       torsoG.addColorStop(1, shadeColor(isAlt ? tinted : baseColor, -0.5));
+
+      // ARMS DRAW FIRST (behind torso) so the body silhouette covers the
+      // shoulder anchor cleanly. Each arm starts at a shoulder corner.
+      const armSwing = Math.sin(phase) * 5 * s;
+      const shoulderY = headY + 10 * s;
+      // The arms also anchor on the SIDE shoulder offset — not at e.x —
+      // and reach down + forward/back with the walk cycle.
+      const armShoulderL = e.x - bodyW * 0.9;
+      const armShoulderR = e.x + bodyW * 0.9;
+      const armHandFrontX = e.x + face * (bodyW * 0.9 + armSwing);
+      const armHandBackX  = e.x - face * (bodyW * 0.9 - armSwing * 0.4);
+      const armHandY = shoulderY + 11 * s;
+      ctx.strokeStyle = shadeColor(baseColor, -0.35); ctx.lineWidth = 3.0 * s;
+      ctx.beginPath();
+      // Front arm (swings in the facing direction)
+      ctx.moveTo(face > 0 ? armShoulderR : armShoulderL, shoulderY);
+      ctx.lineTo(armHandFrontX, armHandY);
+      // Back arm (swings opposite)
+      ctx.moveTo(face > 0 ? armShoulderL : armShoulderR, shoulderY);
+      ctx.lineTo(armHandBackX, armHandY);
+      ctx.stroke();
+      // Gloves at hand ends
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.arc(armHandFrontX, armHandY, 1.6 * s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(armHandBackX,  armHandY, 1.6 * s, 0, Math.PI*2); ctx.fill();
+
+      // TORSO ON TOP — covers where the shoulders meet the body so the arms
+      // look like they grow out of the silhouette, not the middle.
       ctx.fillStyle = torsoG;
       ctx.beginPath();
-      ctx.moveTo(e.x - bodyW * 0.6, bodyTop);
-      ctx.quadraticCurveTo(e.x - bodyW, (bodyTop + bodyBot) / 2, e.x - bodyW * 0.5, bodyBot);
-      ctx.quadraticCurveTo(e.x, bodyBot + 2 * s, e.x + bodyW * 0.5, bodyBot);
-      ctx.quadraticCurveTo(e.x + bodyW, (bodyTop + bodyBot) / 2, e.x + bodyW * 0.6, bodyTop);
-      ctx.quadraticCurveTo(e.x, bodyTop - 2 * s, e.x - bodyW * 0.6, bodyTop);
+      ctx.moveTo(e.x - bodyW * 0.7, bodyTop);
+      ctx.quadraticCurveTo(e.x - bodyW, (bodyTop + bodyBot) / 2, e.x - bodyW * 0.6, bodyBot);
+      ctx.quadraticCurveTo(e.x, bodyBot + 2 * s, e.x + bodyW * 0.6, bodyBot);
+      ctx.quadraticCurveTo(e.x + bodyW, (bodyTop + bodyBot) / 2, e.x + bodyW * 0.7, bodyTop);
+      ctx.quadraticCurveTo(e.x, bodyTop - 2 * s, e.x - bodyW * 0.7, bodyTop);
       ctx.closePath(); ctx.fill();
       ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
       ctx.stroke();
       // shirt highlight strip
-      ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.1;
+      ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(e.x - 3 * s, bodyTop + 1.5 * s);
-      ctx.lineTo(e.x - 3 * s, bodyBot - 1.5 * s);
+      ctx.moveTo(e.x - bodyW * 0.35, bodyTop + 1.5 * s);
+      ctx.lineTo(e.x - bodyW * 0.35, bodyBot - 1.5 * s);
       ctx.stroke();
 
-      // Arms — counter-swing the legs along the facing axis. In side view
-      // arms swing forward (+face) when their opposite leg swings forward.
-      const armSwing = Math.sin(phase) * 5 * s;
-      const shoulderY = headY + 10 * s;
-      ctx.strokeStyle = shadeColor(baseColor, -0.35); ctx.lineWidth = 3.2 * s;
-      ctx.beginPath();
-      ctx.moveTo(e.x, shoulderY);
-      ctx.lineTo(e.x + face * armSwing, shoulderY + 11 * s);
-      ctx.moveTo(e.x, shoulderY);
-      ctx.lineTo(e.x - face * armSwing, shoulderY + 11 * s);
-      ctx.stroke();
-      // Gloves (hand circles)
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.arc(e.x + face * armSwing, shoulderY + 11 * s, 1.6 * s, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.x - face * armSwing, shoulderY + 11 * s, 1.6 * s, 0, Math.PI*2); ctx.fill();
-
-      // Legs — one strides forward (+face*stride) while the other plants back.
+      // Legs — anchored at hip corners (not at e.x). One strides forward, the
+      // other plants back.
+      const hipL = e.x - bodyW * 0.55;
+      const hipR = e.x + bodyW * 0.55;
       ctx.strokeStyle = shadeColor(baseColor, -0.55); ctx.lineWidth = 3.6 * s;
       ctx.beginPath();
-      ctx.moveTo(e.x, hipY);
+      ctx.moveTo(face > 0 ? hipR : hipL, hipY);
       ctx.lineTo(e.x + face * stride, feetY - liftFront);
-      ctx.moveTo(e.x, hipY);
+      ctx.moveTo(face > 0 ? hipL : hipR, hipY);
       ctx.lineTo(e.x - face * stride, feetY - liftBack);
       ctx.stroke();
       // Boots
