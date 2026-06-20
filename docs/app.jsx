@@ -313,15 +313,28 @@
                       style={{ border:'none', cursor:'pointer', gap:6 }}>
                       <Icon id="sparkle" size={12}/> Random
                     </button>
-                    {(G.TD_PATH_IDS || []).map(id => (
-                      <button key={id}
-                        onClick={() => onChange({ ...settings, tdMapId: id })}
-                        className={`pill ${settings.tdMapId === id ? 'on' : ''}`}
-                        style={{ border:'none', cursor:'pointer', gap:6, textTransform:'uppercase' }}>
-                        {id}
-                      </button>
-                    ))}
+                    {(G.TD_PATH_IDS || []).map(id => {
+                      const theme = (G.TD_MAP_THEMES || {})[id] || {};
+                      const label = theme.name || id;
+                      const selected = settings.tdMapId === id;
+                      return (
+                        <button key={id}
+                          onClick={() => onChange({ ...settings, tdMapId: id })}
+                          className={`pill ${selected ? 'on' : ''}`}
+                          title={theme.tag || ''}
+                          style={{ border:'none', cursor:'pointer', gap:6 }}>
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
+                  {/* Theme tag — shows the perk for the currently selected map */}
+                  {settings.tdMapId && settings.tdMapId !== 'random'
+                    && (G.TD_MAP_THEMES || {})[settings.tdMapId] && (
+                    <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:6, lineHeight:1.4 }}>
+                      {G.TD_MAP_THEMES[settings.tdMapId].tag}
+                    </div>
+                  )}
                 </div>
                 <div className="section-card" style={{ margin:0 }}>
                   <div className="sc-h">Endless TD</div>

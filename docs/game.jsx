@@ -939,6 +939,12 @@ window.StickFightGame = (function () {
 
       // Tower shooting
       for (const t of td.towers) {
+        // Tick down ability cooldown and active-buff timer every frame.
+        if ((t.abilityCd  || 0) > 0) t.abilityCd--;
+        if ((t.abilityActive || 0) > 0) {
+          t.abilityActive--;
+          if (t.abilityActive === 0) { t._beamBoost = 0; }
+        }
         // SUN: produces gold passively, no targeting
         if (t.kindId === 'sun') {
           t.atkCd = (t.atkCd || 0) - 1;
@@ -961,8 +967,9 @@ window.StickFightGame = (function () {
           }
           t._beamTarget = target;
           t._beamTarget2 = null;
+          const beamMult = t._beamBoost > 0 ? t._beamBoost : 1;
           if (target) {
-            target.hp -= t.dmg;
+            target.hp -= t.dmg * beamMult;
             if (state.frame % 4 === 0) {
               spawnParticles(state, target.x, target.y, t.turret, 1, 0.6);
             }
@@ -975,7 +982,7 @@ window.StickFightGame = (function () {
                 if (d <= 90 && d < bd) { bd = d; next = e; }
               }
               if (next) {
-                next.hp -= t.dmg * 0.7;
+                next.hp -= t.dmg * 0.7 * beamMult;
                 t._beamTarget2 = next;
                 if (state.frame % 4 === 0) {
                   spawnParticles(state, next.x, next.y, t.turret, 1, 0.5);
@@ -1040,24 +1047,28 @@ window.StickFightGame = (function () {
           // Standard projectile fire. Archer multishot fires N arrows at the
           // same target with a small angular spread.
           const shots = (t.kindId === 'basic' ? (t.multishot || 1) : 1);
+          // HEADSHOT ability ready: super-charge this single shot, then clear flag.
+          const chargedMult = t._chargedShot ? 5 : 1;
+          const chargedPierce = !!t._chargedShot;
           for (let s = 0; s < shots; s++) {
             const offsetAng = shots > 1 ? ((s - (shots - 1) / 2) * 0.25) : 0;
             td.proj.push({
               x: t.x, y: t.y,
-              target, dmg: t.dmg,
+              target, dmg: t.dmg * chargedMult,
               splash: t.splash || 0,
               slow: t.slow || null,
-              pierce: !!t.pierce,
-              crit: !!t.crit,
+              pierce: !!t.pierce || chargedPierce,
+              crit: !!t.crit || !!t._chargedShot,
               freezeChance: t.freezeChance || 0,
               speed: t.kindId === 'sniper' ? 22 : t.kindId === 'cannon' ? 9 : 14,
-              color: t.turret,
+              color: t._chargedShot ? '#ffd76a' : t.turret,
               kindId: t.kindId,
               ang: offsetAng,
               spreadOffset: offsetAng,
               life: 90,
             });
           }
+          if (t._chargedShot) t._chargedShot = false;
         }
       }
 
@@ -1068,6 +1079,24 @@ window.StickFightGame = (function () {
           if (state.frame % 6 === 0) {
             e.hp -= e.poisonDps / 10;
             spawnParticles(state, e.x, e.y, '#7bff5a', 1, 0.4);
+          }
+        }
+      }
+      // Toxic-Cloud ability tick: damages and slows anything inside the cloud.
+      if (td.clouds && td.clouds.length) {
+        for (let i = td.clouds.length - 1; i >= 0; i--) {
+          const c = td.clouds[i];
+          c.life--;
+          if (c.life <= 0) { td.clouds.splice(i, 1); continue; }
+          for (const e of td.enemies) {
+            const d = Math.hypot(e.x - c.x, e.y - c.y);
+            if (d <= c.r) {
+              if (state.frame % 6 === 0) {
+                e.hp -= c.dps / 10;
+                if (Math.random() < 0.3) spawnParticles(state, e.x, e.y, c.color, 1, 0.3);
+              }
+              e.slowFor = Math.max(e.slowFor || 0, 30);
+            }
           }
         }
       }
@@ -1872,56 +1901,64 @@ window.StickFightGame = (function () {
       upgrades:[
         '+60% damage, +15% range, +15% fire rate',
         'Twin Bows: fires TWO arrows per shot',
-      ]
+      ],
+      ability:{ id:'volley', name:'VOLLEY', desc:'Fires 8 arrows at random enemies on the path.', cooldownSec:14 },
     },
     { id:'sniper', name:'Sniper',  cost:140, range:280, atkCd:50, dmg:30, color:'#1a3a2a', turret:'#5bff8a',
       desc:'Massive range, big single damage.',
       upgrades:[
         '+60% damage, +15% range, +15% fire rate',
         'Armor Piercing: shots ignore armor + crit on every hit',
-      ]
+      ],
+      ability:{ id:'headshot', name:'HEADSHOT', desc:'Next shot deals 5× damage and pierces armor.', cooldownSec:18 },
     },
     { id:'cannon', name:'Cannon',  cost:180, range:120, atkCd:60, dmg:24, color:'#5a3a1a', turret:'#ff9a3c',
       desc:'Lobs cannonballs with area splash damage.',
       upgrades:[
         '+60% damage, +20% splash radius',
         'Heavy Shell: splash also briefly knocks back/slows enemies',
-      ]
+      ],
+      ability:{ id:'barrage', name:'MORTAR BARRAGE', desc:'Drops 4 huge splash shells across the path.', cooldownSec:22 },
     },
     { id:'frost',  name:'Frost',   cost:100, range:130, atkCd:30, dmg:6,  color:'#1a4a78', turret:'#a5f3ff',
       desc:'Slows every enemy it hits for 2 seconds.',
       upgrades:[
         '+0.5s slow, +60% damage, stronger slow factor',
         'Deep Freeze: 20% chance to fully FREEZE on hit',
-      ]
+      ],
+      ability:{ id:'blizzard', name:'BLIZZARD', desc:'Freezes EVERY enemy on the map for 2.5 seconds.', cooldownSec:30 },
     },
     { id:'laser',  name:'Laser',   cost:200, range:170, atkCd:0,  dmg:0.25, color:'#3a1a3a', turret:'#ff3df6',
       desc:'Continuous beam — locks on and melts.',
       upgrades:[
         '+60% damage per tick, +15% range',
         'Prism Split: beam chains to a SECOND nearby enemy',
-      ]
+      ],
+      ability:{ id:'overcharge', name:'OVERCHARGE', desc:'Beam damage 3× for 5 seconds.', cooldownSec:18 },
     },
     { id:'tesla',  name:'Tesla',   cost:220, range:140, atkCd:50, dmg:14, color:'#1a1a4a', turret:'#7c5cff',
       desc:'Chain lightning bounces between 3 enemies.',
       upgrades:[
         '+60% damage per arc, +15% range',
         'Overload: jumps to 5 enemies + each hit briefly stuns',
-      ]
+      ],
+      ability:{ id:'storm', name:'THUNDERSTORM', desc:'Chain lightning hits up to 12 enemies anywhere.', cooldownSec:18 },
     },
     { id:'poison', name:'Poison',  cost:120, range:130, atkCd:42, dmg:5,  color:'#2a3a1a', turret:'#7bff5a',
       desc:'Coats targets in poison. Damage over 3 seconds.',
       upgrades:[
         '+60% damage, longer DoT, faster fire rate',
         'Plague: poison spreads to nearby enemies on death',
-      ]
+      ],
+      ability:{ id:'toxiccloud', name:'TOXIC CLOUD', desc:'Drops a poison patch on the path for 6 seconds.', cooldownSec:24 },
     },
     { id:'sun',    name:'Gold Mine', cost:260, range:0, atkCd:300, dmg:0, color:'#7a5a14', turret:'#ffd76a',
       desc:'Passive — generates +30 gold every 5 seconds.',
       upgrades:[
         'Output doubles: +60 gold every 5s',
         'Bonanza: 2x payout every cycle ( +120 gold every 5s )',
-      ]
+      ],
+      ability:{ id:'jackpot', name:'JACKPOT', desc:'Instantly pays out +150 gold.', cooldownSec:30 },
     },
   ];
   // ---------- TD path layouts ----------
@@ -1962,6 +1999,157 @@ window.StickFightGame = (function () {
     ],
   };
   const TD_PATH_IDS = Object.keys(TD_PATHS);
+  // ---------- TD map themes ----------
+  // Each map gets a distinct look (background, path color) and a small
+  // gameplay perk that buffs certain towers built on it. The "buff" runs at
+  // tower-spawn time inside tdTryPlaceTower / cpu-spawn.
+  const TD_MAP_THEMES = {
+    'zigzag': {
+      name: 'FOREST GLADE',
+      tag: 'Lush green meadow — archers shoot farther through the trees.',
+      tile1: '#2e7a36', tile2: '#367a3e',
+      pathOuter: '#7a5a2a', pathInner: '#c89a5c',
+      tuftColor: '#5cff7a',
+      decor: (ctx, frame) => {
+        // sparse pines around the borders
+        const pines = [
+          [80, 70], [180, 110], [60, 380], [120, 500],
+          [1180, 80], [1100, 140], [1220, 380], [1140, 500],
+        ];
+        for (const [x, y] of pines) {
+          ctx.fillStyle = '#5a3a18';
+          ctx.fillRect(x - 2, y - 4, 4, 18);
+          ctx.fillStyle = '#1f5a25';
+          ctx.beginPath();
+          ctx.moveTo(x - 16, y); ctx.lineTo(x, y - 32); ctx.lineTo(x + 16, y);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#2c7a36';
+          ctx.beginPath();
+          ctx.moveTo(x - 12, y - 10); ctx.lineTo(x, y - 38); ctx.lineTo(x + 12, y - 10);
+          ctx.closePath(); ctx.fill();
+        }
+      },
+      perk: (t, kindId) => {
+        if (kindId === 'basic' || kindId === 'sniper') t.range = Math.round(t.range * 1.15);
+      },
+    },
+    'scurve': {
+      name: 'DESERT DUNES',
+      tag: 'Open sightlines — every tower gets +10% range under the blazing sun.',
+      tile1: '#d4a85c', tile2: '#c69a4c',
+      pathOuter: '#7a5a2a', pathInner: '#e6c280',
+      tuftColor: '#f0d790',
+      decor: (ctx, frame) => {
+        // cacti
+        const cacti = [[120, 80], [1160, 90], [180, 560], [1100, 560]];
+        for (const [x, y] of cacti) {
+          ctx.fillStyle = '#2c6a32';
+          ctx.fillRect(x - 5, y, 10, 28);
+          ctx.fillRect(x - 14, y + 8, 6, 12);
+          ctx.fillRect(x + 8,  y + 4, 6, 14);
+        }
+        // sand swirls
+        ctx.fillStyle = 'rgba(255,255,255,.07)';
+        for (let i = 0; i < 20; i++) {
+          const x = (i * 91) % W;
+          const y = (i * 137 + Math.floor(frame * 0.3)) % H;
+          ctx.fillRect(x, y, 14, 1);
+        }
+      },
+      perk: (t) => { t.range = Math.round(t.range * 1.10); },
+    },
+    'spiral': {
+      name: 'VOLCANO SPIRAL',
+      tag: 'Cannons reforged in lava — splash and damage cranked up.',
+      tile1: '#3a1a1a', tile2: '#42201a',
+      pathOuter: '#8a2a08', pathInner: '#ff5b14',
+      tuftColor: '#ff7a3c',
+      decor: (ctx, frame) => {
+        // lava pools
+        const pools = [[120, 100, 36], [1160, 110, 32], [80, 480, 30], [1180, 500, 38]];
+        for (const [x, y, r] of pools) {
+          ctx.fillStyle = '#3a0a04';
+          ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI*2); ctx.fill();
+          const pulse = (Math.sin(frame * 0.08 + x) + 1) * 0.5;
+          ctx.fillStyle = `rgba(255, ${80 + pulse*100}, 20, ${.7 + pulse*.3})`;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#ffd76a';
+          ctx.beginPath(); ctx.arc(x - r*0.3, y - r*0.2, r * 0.2, 0, Math.PI*2); ctx.fill();
+        }
+        // glowing path edges — handled by path color
+      },
+      perk: (t, kindId) => {
+        if (kindId === 'cannon') { t.dmg = Math.round(t.dmg * 1.25); t.splash = (t.splash || 50) + 20; }
+        if (kindId === 'poison') t.dmg = Math.round(t.dmg * 1.20);
+      },
+    },
+    'maze': {
+      name: 'CYBER GRID',
+      tag: 'Neon circuitry — Laser and Tesla towers fire 20% faster.',
+      tile1: '#0a0e2a', tile2: '#0a142e',
+      pathOuter: '#1a3a8a', pathInner: '#5cf6ff',
+      tuftColor: '#5cf6ff',
+      decor: (ctx, frame) => {
+        // grid lines
+        ctx.strokeStyle = 'rgba(91, 246, 255, .15)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 72) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        }
+        for (let y = 0; y < H; y += 72) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        }
+        // floating data motes
+        for (let i = 0; i < 30; i++) {
+          const tt = (frame * 0.6 + i * 47) % H;
+          const x = (i * 113) % W;
+          ctx.fillStyle = `rgba(124, 92, 255, ${0.3 + (i%3)*0.2})`;
+          ctx.fillRect(x, tt, 3, 3);
+        }
+      },
+      perk: (t, kindId) => {
+        if (kindId === 'laser' || kindId === 'tesla') {
+          t.atkRate = Math.max(0, Math.round((t.atkRate || 1) * 0.8));
+          t.dmg = +(t.dmg * 1.10).toFixed(2);
+        }
+      },
+    },
+    'highway': {
+      name: 'GLACIER RUN',
+      tag: 'Frozen tundra — Frost slows are 25% stronger and last longer.',
+      tile1: '#a8c8e0', tile2: '#b4d0e6',
+      pathOuter: '#3a5a8a', pathInner: '#cfe0f4',
+      tuftColor: '#fff',
+      decor: (ctx, frame) => {
+        // snowflakes drifting
+        for (let i = 0; i < 60; i++) {
+          const tt = ((frame * 0.5 + i * 31) % (H + 40)) - 20;
+          const x = ((i * 79) + Math.sin((frame + i*5) * 0.02) * 8) % W;
+          ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + (i%3)*0.15})`;
+          ctx.fillRect(x, tt, 2, 2);
+        }
+        // icebergs
+        const bergs = [[100, 100], [1200, 90], [80, 520], [1180, 500]];
+        for (const [x, y] of bergs) {
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.moveTo(x - 22, y + 10); ctx.lineTo(x - 6, y - 18);
+          ctx.lineTo(x + 12, y - 8); ctx.lineTo(x + 22, y + 10);
+          ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#a8c8e0'; ctx.lineWidth = 1; ctx.stroke();
+        }
+      },
+      perk: (t, kindId) => {
+        if (kindId === 'frost' && t.slow) {
+          t.slow.factor = Math.max(0.25, t.slow.factor - 0.1);
+          t.slow.durSec += 0.5;
+          t.dmg = Math.round(t.dmg * 1.10);
+        }
+      },
+    },
+  };
+  function tdMapTheme(id) { return TD_MAP_THEMES[id] || TD_MAP_THEMES.zigzag; }
+
   function tdGenPath(forceId) {
     // Use the picked map if specified, otherwise random.
     const id = (forceId && TD_PATHS[forceId])
@@ -2044,7 +2232,7 @@ window.StickFightGame = (function () {
       if (collision) continue;
       // Build it.
       td.cpuGold -= kind.cost;
-      td.towers.push({
+      const cpuT = {
         x: px, y: py,
         kindId: kind.id,
         level: 1,
@@ -2055,8 +2243,13 @@ window.StickFightGame = (function () {
         splash: kind.id === 'cannon' ? 50 : 0,
         slow:   kind.id === 'frost'  ? { factor:0.55, durSec:2 } : null,
         baseCost: kind.cost,
+        abilityCd: 60 * 5,       // CPU waits 5s before first cast
+        abilityActive: 0,
         cpu: true,                    // mark as CPU-owned (rendered with badge)
-      });
+      };
+      const cpuTheme = tdMapTheme((td.path && td.path._id) || td.mapId);
+      if (cpuTheme && cpuTheme.perk) cpuTheme.perk(cpuT, kind.id);
+      td.towers.push(cpuT);
       SFX.place();
       return;
     }
@@ -2073,7 +2266,7 @@ window.StickFightGame = (function () {
       if (Math.hypot(t.x - x, t.y - y) < 44) return;
     }
     td.gold -= kind.cost;
-    td.towers.push({
+    const newT = {
       x, y,
       kindId: kind.id,
       level: 1,
@@ -2086,7 +2279,16 @@ window.StickFightGame = (function () {
       // for frost (slow strength + duration)
       slow:   kind.id === 'frost'  ? { factor:0.55, durSec:2 } : null,
       baseCost: kind.cost,
-    });
+      // ===== Active ability =====
+      // ready=0 means the ability is immediately usable. cooldown is in frames.
+      abilityCd: 0,
+      abilityActive: 0, // frames remaining for buff-style abilities
+    };
+    // Apply the map theme's tower perk (if any).
+    const themeId = (td.path && td.path._id) || td.mapId;
+    const theme = tdMapTheme(themeId);
+    if (theme && theme.perk) theme.perk(newT, kind.id);
+    td.towers.push(newT);
     SFX.place();
   }
   // Tower-upgrade panel is FIXED to the top-right corner of the canvas so the
@@ -2120,25 +2322,26 @@ window.StickFightGame = (function () {
   }
 
   function tdUpgradePanelRect(/* t */) {
-    const PW = 320, PH = 310;
+    const PW = 320, PH = 380;            // taller to fit ability button
     const px = W - PW - 14;
     const py = 90;
     return { px, py, PW, PH };
   }
-  // Sub-rects for the two big buttons + close button. Shared by click & draw.
+  // Sub-rects for the three big buttons + close button. Shared by click & draw.
   function tdUpgradePanelBtns() {
     const { px, py, PW, PH } = tdUpgradePanelRect();
-    // Header (46) + desc section (~50) + perk section (~70) = ~166 px before buttons
-    const upX = px + 14, upY = py + 170, upW = PW - 28, upH = 52;
-    const slX = px + 14, slY = py + 232, slW = PW - 28, slH = 46;
+    // Header (46) + desc (~46) + next-upg (~70) → buttons start around py+170
+    const upX = px + 14, upY = py + 170, upW = PW - 28, upH = 50;
+    const abX = px + 14, abY = py + 226, abW = PW - 28, abH = 60;  // ABILITY (taller, shows cooldown)
+    const slX = px + 14, slY = py + 292, slW = PW - 28, slH = 38;
     const cxX = px + PW - 34, cxY = py + 8, cxW = 26, cxH = 26;
-    return { px, py, PW, PH, upX, upY, upW, upH, slX, slY, slW, slH, cxX, cxY, cxW, cxH };
+    return { px, py, PW, PH, upX, upY, upW, upH, abX, abY, abW, abH, slX, slY, slW, slH, cxX, cxY, cxW, cxH };
   }
   function tdUpgradePanelClick(state, x, y) {
     const td = state.td;
     if (!td || !td.selectedTower) return false;
     const t = td.selectedTower;
-    const { px, py, PW, PH, upX, upY, upW, upH, slX, slY, slW, slH, cxX, cxY, cxW, cxH } = tdUpgradePanelBtns();
+    const { px, py, PW, PH, upX, upY, upW, upH, abX, abY, abW, abH, slX, slY, slW, slH, cxX, cxY, cxW, cxH } = tdUpgradePanelBtns();
     // Close (X) button — deselect
     if (x >= cxX && x < cxX + cxW && y >= cxY && y < cxY + cxH) {
       td.selectedTower = null;
@@ -2147,6 +2350,11 @@ window.StickFightGame = (function () {
     // UPGRADE button
     if (x >= upX && x < upX + upW && y >= upY && y < upY + upH) {
       if (t.level < 3) tdUpgrade(state, t);
+      return true;
+    }
+    // ABILITY button — fires the tower's special if ready
+    if (x >= abX && x < abX + abW && y >= abY && y < abY + abH) {
+      tdCastAbility(state, t);
       return true;
     }
     // SELL button
@@ -2239,6 +2447,132 @@ window.StickFightGame = (function () {
     }
     SFX.upgrade();
   }
+  // ===== TD active abilities =====
+  // Each kind's ability has its own effect. Called when the player taps the
+  // ABILITY button (or the bot auto-casts it). Sets the tower's cooldown.
+  function tdCastAbility(state, t) {
+    const td = state.td;
+    if (!td || !t) return false;
+    const kind = (td.towerKinds || []).find(k => k.id === t.kindId);
+    if (!kind || !kind.ability) return false;
+    if ((t.abilityCd || 0) > 0) return false;
+    const ab = kind.ability;
+    const cdFrames = Math.round((ab.cooldownSec || 20) * 60);
+    switch (ab.id) {
+      case 'volley': {
+        // Spread arrows: 8 arrows to up to 8 leading enemies (or repeat target).
+        const targets = td.enemies.slice().sort((a,b) => (b.t||0) - (a.t||0)).slice(0, 8);
+        if (targets.length === 0) return false; // nothing to shoot, save cooldown
+        for (let i = 0; i < 8; i++) {
+          const e = targets[i % targets.length];
+          td.proj.push({
+            x: t.x, y: t.y, target: e, dmg: t.dmg,
+            splash: 0, slow: null,
+            speed: 14, color: t.turret, kindId: 'basic',
+            ang: (i / 8 - 0.5) * 0.5, spreadOffset: 0,
+            life: 60,
+          });
+        }
+        spawnStarBurst(state, t.x, t.y, t.turret);
+        spawnPopup(state, t.x, t.y - 30, 'VOLLEY!', t.turret);
+        break;
+      }
+      case 'headshot': {
+        // Next regular shot will be a 5× damage piercing crit.
+        t._chargedShot = true;
+        spawnStarBurst(state, t.x, t.y, '#5bff8a');
+        spawnPopup(state, t.x, t.y - 30, 'HEADSHOT READY', '#5bff8a');
+        break;
+      }
+      case 'barrage': {
+        // Drop 4 mortar explosions. Spread along enemies (or random path points
+        // if none). Each blast does 2.2× tower damage in a 110px radius.
+        const pool = td.enemies.length > 0 ? td.enemies : td.path;
+        if (pool.length === 0) return false;
+        for (let i = 0; i < 4; i++) {
+          const pick = pool[Math.floor(Math.random() * pool.length)];
+          const dx = pick.x + (Math.random()*40-20);
+          const dy = pick.y + (Math.random()*40-20);
+          const dmg = t.dmg * 2.2, splash = 110;
+          for (const e of td.enemies) {
+            const d = Math.hypot(e.x - dx, e.y - dy);
+            if (d <= splash) e.hp -= dmg * (1 - d / (splash * 1.3));
+          }
+          spawnStarBurst(state, dx, dy, '#ff5b14');
+          spawnParticles(state, dx, dy, '#ff9a3c', 16, 1.4);
+        }
+        spawnPopup(state, t.x, t.y - 30, 'BARRAGE!', '#ff9a3c');
+        break;
+      }
+      case 'blizzard': {
+        // Freeze every enemy on the map for 2.5 seconds.
+        for (const e of td.enemies) {
+          e.slowFor = Math.max(e.slowFor || 0, 150);
+          e.slowFactor = 0.10;
+        }
+        spawnStarBurst(state, t.x, t.y, '#a5f3ff');
+        spawnPopup(state, t.x, t.y - 30, 'BLIZZARD!', '#a5f3ff');
+        t.abilityActive = 150; // visual marker
+        break;
+      }
+      case 'overcharge': {
+        // Beam damage 3× for 5 seconds.
+        t.abilityActive = 300;
+        t._beamBoost = 3;
+        spawnStarBurst(state, t.x, t.y, '#ff3df6');
+        spawnPopup(state, t.x, t.y - 30, 'OVERCHARGE!', '#ff3df6');
+        break;
+      }
+      case 'storm': {
+        // Chain lightning hitting up to 12 enemies anywhere on the map.
+        const hit = new Set();
+        let cur = td.enemies[0];
+        if (!cur) return false;
+        for (let i = 0; i < 12 && cur; i++) {
+          cur.hp -= t.dmg * 1.5;
+          cur.slowFor = Math.max(cur.slowFor || 0, 30);
+          hit.add(cur);
+          spawnParticles(state, cur.x, cur.y, '#7c5cff', 6, 1);
+          // Find next nearest
+          let next = null, bd = Infinity;
+          for (const e of td.enemies) {
+            if (hit.has(e)) continue;
+            const d = Math.hypot(e.x - cur.x, e.y - cur.y);
+            if (d < bd) { bd = d; next = e; }
+          }
+          cur = next;
+        }
+        spawnStarBurst(state, t.x, t.y, '#7c5cff');
+        spawnPopup(state, t.x, t.y - 30, 'STORM!', '#7c5cff');
+        break;
+      }
+      case 'toxiccloud': {
+        // Spawn a damaging poison patch at the nearest path point in range.
+        let bestP = null, bestD = Infinity;
+        for (const p of td.path) {
+          const d = Math.hypot(p.x - t.x, p.y - t.y);
+          if (d < bestD) { bestD = d; bestP = p; }
+        }
+        const cx = bestP ? bestP.x : t.x;
+        const cy = bestP ? bestP.y : t.y;
+        td.clouds = td.clouds || [];
+        td.clouds.push({ x: cx, y: cy, r: 70, life: 360, dps: t.dmg * 0.5, color: '#7bff5a' });
+        spawnPopup(state, t.x, t.y - 30, 'TOXIC CLOUD!', '#7bff5a');
+        break;
+      }
+      case 'jackpot': {
+        td.gold += 150;
+        spawnStarBurst(state, t.x, t.y, '#ffd76a');
+        spawnPopup(state, t.x, t.y - 30, '+150 GOLD!', '#ffd76a');
+        break;
+      }
+      default: return false;
+    }
+    t.abilityCd = cdFrames;
+    SFX.upgrade();
+    return true;
+  }
+
   function tdSellTower(state, t) {
     const td = state.td;
     if (!td || !t) return;
@@ -3575,26 +3909,60 @@ window.StickFightGame = (function () {
   function drawTowerDefenseTopDown(ctx, state) {
     const td = state.td;
     if (!td) return;
-    // Grass background
+    // ===== Themed background (per-map) =====
+    const theme = tdMapTheme((td.path && td.path._id) || td.mapId);
     const tile = 36;
     for (let y = 0; y < H; y += tile) {
       for (let x = 0; x < W; x += tile) {
-        ctx.fillStyle = ((x/tile + y/tile) & 1) ? '#2e7a36' : '#367a3e';
+        ctx.fillStyle = ((x/tile + y/tile) & 1) ? theme.tile1 : theme.tile2;
         ctx.fillRect(x, y, tile, tile);
       }
     }
-    // Path
-    ctx.strokeStyle = '#a87a3c'; ctx.lineWidth = 48; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // Map-specific decor (trees, lava, ice, etc.)
+    if (theme.decor) theme.decor(ctx, state.frame);
+    // Path — outer (border) then inner (surface)
+    ctx.strokeStyle = theme.pathOuter; ctx.lineWidth = 48; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
     ctx.moveTo(td.path[0].x, td.path[0].y);
     for (let i = 1; i < td.path.length; i++) ctx.lineTo(td.path[i].x, td.path[i].y);
     ctx.stroke();
     // Path inner
-    ctx.strokeStyle = '#c89a5c'; ctx.lineWidth = 42;
+    ctx.strokeStyle = theme.pathInner; ctx.lineWidth = 42;
     ctx.beginPath();
     ctx.moveTo(td.path[0].x, td.path[0].y);
     for (let i = 1; i < td.path.length; i++) ctx.lineTo(td.path[i].x, td.path[i].y);
     ctx.stroke();
+    // Volcano: animated glow on path
+    if (theme.pathInner === '#ff5b14') {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.strokeStyle = `rgba(255,154,60,${0.4 + Math.sin(state.frame*0.1)*0.2})`;
+      ctx.lineWidth = 34;
+      ctx.beginPath();
+      ctx.moveTo(td.path[0].x, td.path[0].y);
+      for (let i = 1; i < td.path.length; i++) ctx.lineTo(td.path[i].x, td.path[i].y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // ===== Toxic cloud render =====
+    if (td.clouds && td.clouds.length) {
+      for (const c of td.clouds) {
+        const pulse = (Math.sin(state.frame*0.1) + 1) * 0.5;
+        ctx.fillStyle = `rgba(123,255,90,${0.18 + pulse*0.1})`;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r + pulse*4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = `rgba(123,255,90,${0.10})`;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 0.7, 0, Math.PI*2); ctx.fill();
+        // bubbles
+        for (let i = 0; i < 6; i++) {
+          const a = (state.frame*0.04 + i*1.05) % (Math.PI*2);
+          const r = c.r * 0.55;
+          const bx = c.x + Math.cos(a) * r;
+          const by = c.y + Math.sin(a) * r * 0.7;
+          ctx.fillStyle = '#aaff7a';
+          ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI*2); ctx.fill();
+        }
+      }
+    }
 
     // Spawn marker
     ctx.fillStyle = '#5bff8a';
@@ -3711,7 +4079,7 @@ window.StickFightGame = (function () {
       ctx.beginPath(); ctx.arc(t.x, t.y, 24 + pulse * 2, 0, Math.PI*2); ctx.stroke();
 
       // ============ FIXED PANEL (top-right of canvas) ============
-      const { px, py, PW, PH, upX, upY, upW, upH, slX, slY, slW, slH, cxX, cxY, cxW, cxH } = tdUpgradePanelBtns();
+      const { px, py, PW, PH, upX, upY, upW, upH, abX, abY, abW, abH, slX, slY, slW, slH, cxX, cxY, cxW, cxH } = tdUpgradePanelBtns();
       const upgCost = tdUpgradeCost(t);
       const canUpg = t.level < 3 && td.gold >= upgCost;
       const isMaxed = t.level >= 3;
@@ -3781,6 +4149,41 @@ window.StickFightGame = (function () {
         ctx.fillText(`${upgCost} GOLD`, upX + upW/2, upY + 44);
       }
 
+      // ====== ABILITY button — special active power per tower kind ======
+      const ab = kind && kind.ability;
+      if (ab) {
+        const cdFr = t.abilityCd || 0;
+        const cdMax = Math.round((ab.cooldownSec || 20) * 60);
+        const ready = cdFr <= 0;
+        // Background — purple when ready, dim when on cooldown
+        ctx.fillStyle = ready ? 'rgba(124,92,255,.55)' : 'rgba(40,30,80,.55)';
+        ctx.fillRect(abX, abY, abW, abH);
+        // Cooldown fill bar (left → right)
+        if (!ready) {
+          const ratio = 1 - (cdFr / cdMax);
+          ctx.fillStyle = 'rgba(124,92,255,.30)';
+          ctx.fillRect(abX, abY, abW * ratio, abH);
+        }
+        ctx.strokeStyle = ready ? '#a07bff' : 'rgba(160,123,255,.45)'; ctx.lineWidth = 2;
+        ctx.strokeRect(abX, abY, abW, abH);
+        // Title
+        ctx.fillStyle = ready ? '#fff' : 'rgba(255,255,255,.55)';
+        ctx.font = "700 18px 'Bebas Neue'"; ctx.textAlign = 'center';
+        ctx.fillText(ab.name, abX + abW/2, abY + 20);
+        // Subtext: ready or cooldown seconds left
+        ctx.font = "600 11px 'Rajdhani'";
+        ctx.fillStyle = ready ? '#5cf6ff' : '#c9b4dc';
+        if (ready) {
+          ctx.fillText(ab.desc, abX + abW/2, abY + 38);
+        } else {
+          ctx.fillText(`Cooldown ${Math.ceil(cdFr/60)}s`, abX + abW/2, abY + 38);
+        }
+        // Tap hint
+        ctx.font = "700 11px 'Rajdhani'";
+        ctx.fillStyle = ready ? '#ffd76a' : 'rgba(255,215,106,.4)';
+        ctx.fillText(ready ? 'TAP TO CAST ►' : '— charging —', abX + abW/2, abY + 54);
+      }
+
       // SELL button (big)
       ctx.fillStyle = 'rgba(255,91,91,.35)';
       ctx.fillRect(slX, slY, slW, slH);
@@ -3791,11 +4194,11 @@ window.StickFightGame = (function () {
         + (t.level >= 3 ? tdUpgradeCost({ ...t, level:2 }) : 0);
       const refund = Math.round(totalSpent * 0.6);
       ctx.fillStyle = '#fff';
-      ctx.font = "700 20px 'Bebas Neue'"; ctx.textAlign = 'center';
-      ctx.fillText('SELL', slX + slW/2, slY + 22);
-      ctx.font = "700 13px 'Rajdhani'";
+      ctx.font = "700 18px 'Bebas Neue'"; ctx.textAlign = 'center';
+      ctx.fillText('SELL', slX + slW/2, slY + 18);
+      ctx.font = "700 12px 'Rajdhani'";
       ctx.fillStyle = '#ffd76a';
-      ctx.fillText(`REFUND ${refund} GOLD`, slX + slW/2, slY + 39);
+      ctx.fillText(`REFUND ${refund} GOLD`, slX + slW/2, slY + 32);
     }
 
     // Placement preview at cursor / hover-range on existing tower.
@@ -4193,5 +4596,5 @@ window.StickFightGame = (function () {
   }
 
   return { Component: StickFightCanvas, DEFAULT_PLATFORMS, W, H, controlsFor, SFX,
-           TD_PATH_IDS };
+           TD_PATH_IDS, TD_MAP_THEMES, TD_TOWER_KINDS };
 })();
