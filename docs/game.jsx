@@ -3189,264 +3189,94 @@ window.StickFightGame = (function () {
     ctx.beginPath(); ctx.arc(cx + 11, gy + 9, 1.4, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + 4, gy + 11, 1.4, 0, Math.PI*2); ctx.fill();
 
-    // ============ DETAILED TOWER STICKMAN BODY ============
-    // Two-tone colors derived from tower kind colour.
+    // -- skin/outfit color depends on tower kind --
     const tinted = t.color || '#c9a25f';
-    const dark = '#0a0612';
-    const skin = '#f0c489';
-    const skinShade = '#c89564';
+    const dark = '#1a1622';
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-    // Geometry
-    const headR = 6;
-    const headY = gy - 28 + bob;
-    const torsoTop = headY + headR - 1;
+    // -- body (simple two-line torso + legs + circle head) --
+    const headR = 5;
+    const headY = gy - 26 + bob;
+    const torsoTop = headY + headR;
     const torsoBot = gy - 4;
-    const bootY = gy + 4;
-
-    // -- shaded torso (jersey-style) — capsule with gradient and outline --
-    const torsoG = ctx.createLinearGradient(cx - 6, torsoTop, cx + 6, torsoBot);
-    torsoG.addColorStop(0, tinted);
-    // Darker side for shape — mix toward dark.
-    torsoG.addColorStop(1, shadeColor(tinted, -0.45));
-    ctx.fillStyle = torsoG;
+    ctx.strokeStyle = tinted; ctx.lineWidth = 2.8;
+    // torso
     ctx.beginPath();
-    ctx.moveTo(cx - 4.5, torsoTop + 1);
-    ctx.quadraticCurveTo(cx - 5.8, (torsoTop + torsoBot) / 2, cx - 3.6, torsoBot - 1);
-    ctx.quadraticCurveTo(cx, torsoBot + 2, cx + 3.6, torsoBot - 1);
-    ctx.quadraticCurveTo(cx + 5.8, (torsoTop + torsoBot) / 2, cx + 4.5, torsoTop + 1);
-    ctx.quadraticCurveTo(cx, torsoTop - 2, cx - 4.5, torsoTop + 1);
-    ctx.closePath();
-    ctx.fill();
-    // Body outline + faint highlight strip
-    ctx.strokeStyle = dark; ctx.lineWidth = 1.1;
+    ctx.moveTo(cx, torsoTop);
+    ctx.lineTo(cx, torsoBot);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1;
+    // legs (slight stance)
     ctx.beginPath();
-    ctx.moveTo(cx - 2.5, torsoTop + 2);
-    ctx.lineTo(cx - 2.5, torsoBot - 4);
+    ctx.moveTo(cx, torsoBot);
+    ctx.lineTo(cx - 4, gy + 3);
+    ctx.moveTo(cx, torsoBot);
+    ctx.lineTo(cx + 4, gy + 3);
     ctx.stroke();
-
-    // -- legs (slight stance) with boot ovals --
-    ctx.strokeStyle = dark; ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(cx - 1.5, torsoBot - 1); ctx.lineTo(cx - 4, bootY);
-    ctx.moveTo(cx + 1.5, torsoBot - 1); ctx.lineTo(cx + 4, bootY);
-    ctx.stroke();
-    // boots
-    ctx.fillStyle = dark;
-    ctx.beginPath(); ctx.ellipse(cx - 4, bootY, 3, 1.5, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx + 4, bootY, 3, 1.5, 0, 0, Math.PI*2); ctx.fill();
-
-    // -- head with gradient skin + outline + hair tuft --
-    const headG = ctx.createRadialGradient(cx - face*1.5, headY - 2, 1, cx, headY, headR);
-    headG.addColorStop(0, '#ffe2bd');
-    headG.addColorStop(0.6, skin);
-    headG.addColorStop(1, skinShade);
-    ctx.fillStyle = headG;
+    // head
+    ctx.fillStyle = tinted;
     ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = dark; ctx.lineWidth = 1.1;
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.stroke();
-    // tiny ear
-    ctx.fillStyle = skinShade;
-    ctx.beginPath(); ctx.arc(cx - face * (headR - 0.5), headY + 0.5, 1.1, 0, Math.PI*2); ctx.fill();
-    // hair tuft (front)
-    ctx.fillStyle = shadeColor(tinted, -0.6);
-    ctx.beginPath();
-    ctx.moveTo(cx - 4, headY - 3);
-    ctx.quadraticCurveTo(cx, headY - 7, cx + 4, headY - 3);
-    ctx.quadraticCurveTo(cx + 2, headY - 4, cx, headY - 4);
-    ctx.quadraticCurveTo(cx - 2, headY - 4, cx - 4, headY - 3);
-    ctx.closePath(); ctx.fill();
-
-    // -- eyes (whites + iris + pupil + brow + tiny mouth) --
-    const eX1 = cx + face * 1.4, eX2 = cx + face * 1.4 + 1.8;
+    // eyes (face direction)
     ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(eX1, headY - 0.4, 1.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(eX2, headY - 0.4, 1.3, 0, Math.PI*2); ctx.fill();
-    // iris colored by tower turret color (subtle)
-    ctx.fillStyle = t.turret || '#5cf6ff';
-    ctx.beginPath(); ctx.arc(eX1 + face * 0.2, headY - 0.4, 0.9, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(eX2 + face * 0.2, headY - 0.4, 0.9, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + face * 1.4, headY - 0.6, 1.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + face * 1.4 + 1.4, headY - 0.6, 1.1, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = dark;
-    ctx.beginPath(); ctx.arc(eX1 + face * 0.3, headY - 0.4, 0.55, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(eX2 + face * 0.3, headY - 0.4, 0.55, 0, Math.PI*2); ctx.fill();
-    // brows (slight angle for determination)
-    ctx.strokeStyle = dark; ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(eX1 - 1, headY - 2.4); ctx.lineTo(eX1 + 1, headY - 1.8);
-    ctx.moveTo(eX2 - 1, headY - 1.8); ctx.lineTo(eX2 + 1, headY - 2.4);
-    ctx.stroke();
-    // mouth (small line)
-    ctx.strokeStyle = '#7a3a3a'; ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.moveTo(cx + face * 1.6, headY + 2.2); ctx.lineTo(cx + face * 3, headY + 2.2);
-    ctx.stroke();
-
-    // ============ Per-kind HAT / HEADGEAR ============
-    // Draws BEHIND arms+weapon so the weapon overlays correctly.
-    if (kind === 'basic') {
-      // Archer hood: feathered green hood with brim
-      ctx.fillStyle = '#2c5a2a';
-      ctx.beginPath();
-      ctx.moveTo(cx - headR - 1, headY + 1);
-      ctx.quadraticCurveTo(cx, headY - headR - 5, cx + headR + 1, headY + 1);
-      ctx.quadraticCurveTo(cx, headY - 2, cx - headR - 1, headY + 1);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = dark; ctx.lineWidth = 1; ctx.stroke();
-      // Feather
-      ctx.fillStyle = '#ffd76a';
-      ctx.beginPath();
-      ctx.moveTo(cx + face * (headR - 2), headY - headR - 2);
-      ctx.lineTo(cx + face * (headR + 4), headY - headR - 6);
-      ctx.lineTo(cx + face * (headR + 1), headY - headR - 1);
-      ctx.closePath(); ctx.fill();
-    } else if (kind === 'sniper') {
-      // Sniper: dark beanie with night-vision rim
-      ctx.fillStyle = '#1a2a1a';
-      ctx.beginPath();
-      ctx.arc(cx, headY - 1, headR + 0.5, Math.PI, 0); ctx.lineTo(cx + headR + 0.5, headY + 0.5);
-      ctx.lineTo(cx - headR - 0.5, headY + 0.5); ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(cx - headR, headY + 1); ctx.lineTo(cx + headR, headY + 1); ctx.stroke();
-    } else if (kind === 'cannon') {
-      // Pirate tricorn
-      ctx.fillStyle = '#1a1010';
-      ctx.beginPath();
-      ctx.moveTo(cx - headR - 4, headY - 1);
-      ctx.lineTo(cx, headY - headR - 6);
-      ctx.lineTo(cx + headR + 4, headY - 1);
-      ctx.quadraticCurveTo(cx, headY - 4, cx - headR - 4, headY - 1);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#7a3a1a'; ctx.lineWidth = 0.8; ctx.stroke();
-      // skull pin
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(cx, headY - 4, 1.4, 0, Math.PI*2); ctx.fill();
-    } else if (kind === 'frost') {
-      // Wizard hat with snowflake
-      ctx.fillStyle = '#2a4a8a';
-      ctx.beginPath();
-      ctx.moveTo(cx - headR - 1, headY + 0.5);
-      ctx.lineTo(cx + face * 1, headY - headR - 10);
-      ctx.lineTo(cx + headR + 1, headY + 0.5);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#a5f3ff'; ctx.lineWidth = 0.9; ctx.stroke();
-      // brim band
-      ctx.fillStyle = '#a5f3ff';
-      ctx.fillRect(cx - headR - 1, headY + 0.5, (headR + 1) * 2, 1.5);
-    } else if (kind === 'laser') {
-      // Cyber visor + neck collar
-      ctx.fillStyle = '#5a1a5a';
-      ctx.fillRect(cx - headR - 1, headY - 2, (headR + 1) * 2, 3);
-      ctx.fillStyle = '#ff3df6';
-      ctx.fillRect(cx - headR + 0.5, headY - 1.5, (headR - 0.5) * 2, 1.5);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(cx - 1, headY - 1.2, 2, 0.6);
-      // Antenna
-      ctx.strokeStyle = '#ff3df6'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(cx, headY - headR); ctx.lineTo(cx, headY - headR - 5); ctx.stroke();
-      ctx.fillStyle = '#ff3df6';
-      ctx.beginPath(); ctx.arc(cx, headY - headR - 6, 1.2, 0, Math.PI*2); ctx.fill();
-    } else if (kind === 'tesla') {
-      // Spike-helmet with arcs
-      ctx.fillStyle = '#3a3a5a';
-      ctx.beginPath();
-      ctx.arc(cx, headY - 1, headR + 1, Math.PI, 0);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#7c5cff'; ctx.lineWidth = 0.8; ctx.stroke();
-      // Single spike
-      ctx.fillStyle = '#7c5cff';
-      ctx.beginPath();
-      ctx.moveTo(cx - 2, headY - headR);
-      ctx.lineTo(cx, headY - headR - 7);
-      ctx.lineTo(cx + 2, headY - headR);
-      ctx.closePath(); ctx.fill();
-      // arcs around (only when about to fire)
-      if ((t.atkCd || 0) < 8) {
-        ctx.strokeStyle = '#7c5cff'; ctx.lineWidth = 1.2;
-        for (let k = 0; k < 3; k++) {
-          const a = (state.frame * 0.3 + k * 2.1) % (Math.PI*2);
-          const r = headR + 4;
-          ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(a) * r, headY + Math.sin(a) * r);
-          ctx.lineTo(cx + Math.cos(a) * (r + 2), headY + Math.sin(a) * (r + 2));
-          ctx.stroke();
-        }
-      }
-    } else if (kind === 'poison') {
-      // Gas mask: round filter on the face
-      ctx.fillStyle = '#2a3a14';
-      ctx.beginPath();
-      ctx.arc(cx, headY - 1, headR + 0.8, Math.PI, 0); ctx.lineTo(cx + headR + 0.8, headY + 1);
-      ctx.lineTo(cx - headR - 0.8, headY + 1); ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = dark; ctx.lineWidth = 0.9; ctx.stroke();
-      // Lens (cover eyes)
-      ctx.fillStyle = '#7bff5a';
-      ctx.beginPath(); ctx.arc(cx - 1.8, headY - 0.4, 1.6, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + 1.8, headY - 0.4, 1.6, 0, Math.PI*2); ctx.fill();
-      // Filter at mouth
-      ctx.fillStyle = '#1a2a08';
-      ctx.beginPath(); ctx.arc(cx + face * 2, headY + 3, 2, 0, Math.PI*2); ctx.fill();
-    } else if (kind === 'sun') {
-      // Miner hard hat + headlamp
-      ctx.fillStyle = '#ffd76a';
-      ctx.beginPath();
-      ctx.arc(cx, headY - 1, headR + 0.8, Math.PI, 0); ctx.lineTo(cx + headR + 0.8, headY + 0.5);
-      ctx.lineTo(cx - headR - 0.8, headY + 0.5); ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = dark; ctx.lineWidth = 0.9; ctx.stroke();
-      // Headlamp glow
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(cx + face * 2, headY - 2, 1.2, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = `rgba(255,238,150,${0.4 + Math.sin(state.frame*0.1)*0.2})`;
-      ctx.beginPath();
-      ctx.moveTo(cx + face * 2, headY - 2);
-      ctx.lineTo(cx + face * 10, headY - 8);
-      ctx.lineTo(cx + face * 10, headY + 4);
-      ctx.closePath(); ctx.fill();
-    }
+    ctx.beginPath(); ctx.arc(cx + face * 1.6, headY - 0.6, 0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + face * 1.6 + 1.4, headY - 0.6, 0.5, 0, Math.PI*2); ctx.fill();
 
     // -- arms + weapon (varies by kind) --
     const shoulderY = torsoTop + 4;
     ctx.strokeStyle = tinted; ctx.lineWidth = 2.4;
 
     if (kind === 'basic') {
-      // ARCHER: arms raised holding a bow horizontally facing forward.
-      const hx = cx + face * 9;
+      // ARCHER: arms raised holding a bow facing forward (in `face` direction).
+      // The bow is a vertical "(" with its curve away from the target and the
+      // string in front. Arrow nocked on the string pointing forward.
+      const hx = cx + face * 7;          // bow grip (in front of body)
       const hy = shoulderY + 2;
-      // arms
+      // arms — both reach forward to the bow grip
       ctx.beginPath();
       ctx.moveTo(cx, shoulderY);
-      ctx.lineTo(hx - face * 2, hy + 1);
+      ctx.lineTo(hx, hy - 3);             // top arm holding bow
       ctx.moveTo(cx, shoulderY);
-      ctx.lineTo(hx, hy - 3);
+      ctx.lineTo(hx - face * 2, hy + 2);  // bottom arm drawing the string
       ctx.stroke();
-      // bow (vertical arc)
+      // bow (vertical arc) — curve OPENS in facing direction (toward the
+      // target). When face = +1 the arc spans angles -π/2..+π/2 (right side).
       ctx.strokeStyle = '#8a5028'; ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.arc(hx + face * 1, hy, 9, Math.PI * 0.65 * face, Math.PI * 1.35 * face, face < 0);
+      ctx.arc(hx, hy, 9,
+        face > 0 ? -Math.PI/2 : Math.PI/2,
+        face > 0 ?  Math.PI/2 : 3*Math.PI/2);
       ctx.stroke();
-      // bowstring
+      // bowstring (vertical line on the FAR side of the grip, away from face)
       ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(hx + face * 1, hy - 8.2);
-      ctx.lineTo(hx + face * 1, hy + 8.2);
+      ctx.moveTo(hx - face * 0.5, hy - 8.5);
+      ctx.lineTo(hx - face * 0.5, hy + 8.5);
       ctx.stroke();
-      // arrow nocked, pointing forward
+      // arrow nocked, shaft from string forward through bow grip
       ctx.strokeStyle = '#a06030'; ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.moveTo(hx + face * 1, hy);
-      ctx.lineTo(hx + face * 9, hy);
+      ctx.moveTo(hx - face * 2, hy);                // nock end
+      ctx.lineTo(hx + face * 11, hy);               // tip end
       ctx.stroke();
-      // arrowhead
+      // arrowhead (triangle pointing forward)
       ctx.fillStyle = '#cfd6e8';
       ctx.beginPath();
-      ctx.moveTo(hx + face * 9, hy - 2);
-      ctx.lineTo(hx + face * 12, hy);
-      ctx.lineTo(hx + face * 9, hy + 2);
+      ctx.moveTo(hx + face * 11, hy - 2.2);
+      ctx.lineTo(hx + face * 14, hy);
+      ctx.lineTo(hx + face * 11, hy + 2.2);
       ctx.closePath(); ctx.fill();
+      // fletching at the nock end (small V)
+      ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx - face * 2, hy);
+      ctx.lineTo(hx - face * 4, hy - 1.5);
+      ctx.moveTo(hx - face * 2, hy);
+      ctx.lineTo(hx - face * 4, hy + 1.5);
+      ctx.stroke();
 
     } else if (kind === 'sniper') {
       // SNIPER: prone stance with long rifle pointing forward.
@@ -4404,8 +4234,10 @@ window.StickFightGame = (function () {
     }
 
     // Placement preview at cursor / hover-range on existing tower.
+    // Hidden while a tower is selected — the upgrade panel is on screen and
+    // the player isn't actively placing.
     const selKind = td.towerKinds.find(k => k.id === td.selectedKind) || td.towerKinds[0];
-    if (state.mousePos && state.mousePos.y < H - 100) {
+    if (!td.selectedTower && state.mousePos && state.mousePos.y < H - 100) {
       const m = state.mousePos;
       // Check if hovering an existing tower — if so, show ITS range (planning
       // before clicking). Skip if the tower is already selected (its panel
