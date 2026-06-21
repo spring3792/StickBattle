@@ -128,6 +128,18 @@
   function HostJoinCard({ playMode, party }) {
     const [joinCode, setJoinCode] = useState('');
     const [showJoined, setShowJoined] = useState(null);
+    // Hosting toggle — persists across reloads so the host stays "live" until
+    // they explicitly stop. When false, the code is hidden and only Join shows.
+    const [hosting, setHosting] = useState(() => {
+      try { return localStorage.getItem('sf_hosting_v1') === '1'; } catch(e) { return false; }
+    });
+    function toggleHost() {
+      const next = !hosting;
+      setHosting(next);
+      try { localStorage.setItem('sf_hosting_v1', next ? '1' : '0'); } catch(e){}
+      setShowJoined(next ? 'Hosting started! Share your code.' : 'Stopped hosting');
+      setTimeout(() => setShowJoined(null), 1600);
+    }
     const hostCode = React.useMemo(() => {
       try {
         let c = localStorage.getItem('sf_host_code_v1');
@@ -165,24 +177,56 @@
           : 'linear-gradient(90deg, rgba(255,154,60,.08), transparent 70%)',
         border: isOnline ? '2px solid rgba(255,215,106,.45)' : '1.5px solid var(--line-2)',
       }}>
-        {/* LEFT: hosting code */}
+        {/* LEFT: HOST button OR hosting code */}
         <div className="row" style={{ gap:10, alignItems:'center', flex:'1 1 240px', minWidth:200 }}>
-          <div style={{
-            width:36, height:36, borderRadius:8,
-            background: isOnline ? 'linear-gradient(140deg, #ffd76a, #ff9a3c)' : 'linear-gradient(140deg, var(--fire-2), var(--fire-1))',
-            color:'#fff', display:'grid', placeItems:'center', fontFamily:"'Bebas Neue'", fontSize:20,
-            boxShadow:'0 4px 12px rgba(0,0,0,.4)',
-          }}>H</div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.2em' }}>YOUR LOBBY CODE</div>
-            <div style={{ fontFamily:"'Bebas Neue'", fontSize:22, letterSpacing:'.18em', color:'#ffd76a', lineHeight:1 }}>
-              {hostCode}
-            </div>
-          </div>
-          <button className="btn sm" onClick={copyCode}>
-            <Icon id="check" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
-            Copy
-          </button>
+          {hosting ? (
+            <>
+              <div style={{
+                width:36, height:36, borderRadius:8,
+                background: 'linear-gradient(140deg, #5bff8a, #2a9a4a)',
+                color:'#001428', display:'grid', placeItems:'center', fontFamily:"'Bebas Neue'", fontSize:20,
+                boxShadow:'0 4px 12px rgba(91,255,138,.4)',
+              }}>
+                <span style={{ width:9, height:9, borderRadius:'50%', background:'#001428' }}/>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:10, color:'#5bff8a', letterSpacing:'.2em' }}>HOSTING · LOBBY CODE</div>
+                <div style={{ fontFamily:"'Bebas Neue'", fontSize:22, letterSpacing:'.18em', color:'#ffd76a', lineHeight:1 }}>
+                  {hostCode}
+                </div>
+              </div>
+              <button className="btn sm" onClick={copyCode}>
+                <Icon id="check" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                Copy
+              </button>
+              <button className="btn sm ghost" onClick={toggleHost}
+                style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                <Icon id="x" size={11}/> Stop
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{
+                width:36, height:36, borderRadius:8,
+                background: 'rgba(255,255,255,.04)',
+                color:'var(--ink-3)', display:'grid', placeItems:'center', fontFamily:"'Bebas Neue'", fontSize:20,
+                border:'1.5px dashed var(--line-2)',
+              }}>H</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.2em' }}>NOT HOSTING</div>
+                <div style={{ fontSize:12, color:'var(--ink-3)' }}>Start a lobby so friends can join</div>
+              </div>
+              <button className="btn" onClick={toggleHost}
+                style={{
+                  background:'linear-gradient(180deg, #5bff8a, #2a9a4a)',
+                  color:'#001428', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                  padding:'8px 16px', fontSize:15,
+                }}>
+                <Icon id="play" size={13} style={{verticalAlign:'middle', marginRight:6}}/>
+                HOST GAME
+              </button>
+            </>
+          )}
         </div>
         {/* RIGHT: join input */}
         <div className="row" style={{ gap:6, alignItems:'center', flex:'1 1 240px', minWidth:200 }}>
@@ -682,52 +726,52 @@
               </div>
             )}
             <div className="section-card" style={{ margin:0 }}>
-              <div className="sc-h">Education Mode</div>
-              <button className={`pill ${settings.edu ? 'on' : ''}`}
-                style={{ border:'none', cursor:'pointer', gap:6 }}
-                onClick={() => onChange({ ...settings, edu: !settings.edu })}>
-                <Icon id={settings.edu ? 'check' : 'x'} size={14} />
-                {settings.edu ? 'ON · Questions between rounds' : 'OFF'}
-              </button>
-              {settings.edu && (
-                <div style={{ marginTop:10 }}>
-                  <div style={{ fontSize:10, letterSpacing:'.14em', color:'var(--ink-3)', textTransform:'uppercase', marginBottom:6 }}>
-                    Question Set
-                  </div>
-                  <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
-                    {allSets.map(s => (
-                      <span key={s.id} style={{ display:'inline-flex', alignItems:'stretch', borderRadius:999, overflow:'hidden' }}>
-                        <button onClick={() => onChange({ ...settings, questionSetId: s.id })}
-                          className={`pill ${activeSet.id === s.id ? 'on' : ''}`}
-                          style={{ border:'none', cursor:'pointer', fontSize:11, gap:4 }}
-                          title={s.description || s.name}>
-                          <Icon id={s.source === 'custom' ? 'pencil' : s.source === 'local' ? 'sparkle' : 'book'} size={11}/>
-                          {s.name} <span style={{ opacity:.55 }}>({s.questions.length}q)</span>
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onPreviewSet && onPreviewSet(s); }}
-                          title={`Preview "${s.name}"`}
-                          className="pill" style={{ border:'none', padding:'4px 8px', marginLeft:-2,
-                            background:'rgba(255,255,255,.05)', color:'var(--ink-2)' }}>
-                          <Icon id="book" size={11}/>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="row" style={{ gap:6, marginTop:8 }}>
-                    <button className="btn sm ghost" onClick={onCreateSet}>
-                      <Icon id="plus" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
-                      New set
-                    </button>
-                    {activeSet && (activeSet.source === 'custom' || activeSet.source === 'ai') && (
-                      <button className="btn sm ghost" onClick={() => onDeleteSet && onDeleteSet(activeSet)}
-                        style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
-                        <Icon id="x" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
-                        Delete
+              <div className="sc-h">Question Set</div>
+              <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+                {/* "None" pill at the front turns off Education Mode entirely. */}
+                <button onClick={() => onChange({ ...settings, edu: false })}
+                  className={`pill ${!settings.edu ? 'on' : ''}`}
+                  style={{ border:'none', cursor:'pointer', gap:6, fontWeight:700 }}
+                  title="No questions between rounds">
+                  <Icon id="x" size={12}/> None
+                </button>
+                {allSets.map(s => {
+                  const isActive = settings.edu && activeSet.id === s.id;
+                  return (
+                    <span key={s.id} style={{ display:'inline-flex', alignItems:'stretch', borderRadius:999, overflow:'hidden' }}>
+                      <button onClick={() => onChange({ ...settings, edu: true, questionSetId: s.id })}
+                        className={`pill ${isActive ? 'on' : ''}`}
+                        style={{ border:'none', cursor:'pointer', fontSize:11, gap:4 }}
+                        title={s.description || s.name}>
+                        <Icon id={s.source === 'custom' ? 'pencil' : s.source === 'local' ? 'sparkle' : 'book'} size={11}/>
+                        {s.name} <span style={{ opacity:.55 }}>({s.questions.length}q)</span>
                       </button>
-                    )}
-                  </div>
-                </div>
-              )}
+                      <button onClick={(e) => { e.stopPropagation(); onPreviewSet && onPreviewSet(s); }}
+                        title={`Preview "${s.name}"`}
+                        className="pill" style={{ border:'none', padding:'4px 8px', marginLeft:-2,
+                          background:'rgba(255,255,255,.05)', color:'var(--ink-2)' }}>
+                        <Icon id="book" size={11}/>
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="row" style={{ gap:6, marginTop:8 }}>
+                <button className="btn sm ghost" onClick={onCreateSet}>
+                  <Icon id="plus" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                  New set
+                </button>
+                {settings.edu && activeSet && (activeSet.source === 'custom' || activeSet.source === 'ai') && (
+                  <button className="btn sm ghost" onClick={() => onDeleteSet && onDeleteSet(activeSet)}
+                    style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                    <Icon id="x" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                    Delete
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
+                {settings.edu ? 'Questions appear between rounds.' : 'No questions — pure action.'}
+              </div>
             </div>
           </div>
         </div>
@@ -1138,11 +1182,14 @@
   }
 
   // ============== lobby ==============
-  function Lobby({ profiles, onChange, onStart, onBack }) {
+  function Lobby({ profiles, onChange, settings, onSettingsChange, onStart, onBack }) {
     const cols = Math.min(profiles.length, 4);
     const total = profiles.length;
     const human = profiles.find(p => !p.isBot);
     const youName = human ? human.name : 'Host';
+    // Mode picker right inside the lobby so the host can change without backing out.
+    const allModes = (D.MODES || []).filter(m => m.ready);
+    const currentMode = allModes.find(m => m.id === (settings && settings.mode)) || allModes[0];
     return (
       <div className="center" style={{ padding:18, gap:12, zIndex:2, alignItems:'stretch', justifyContent:'flex-start', paddingTop:30 }}>
         <div style={{ textAlign:'center' }}>
@@ -1171,6 +1218,37 @@
             HOST · {youName}
           </span>
         </div>
+        {/* HOST-controlled GAME MODE picker inside the lobby */}
+        {settings && onSettingsChange && (
+          <div className="panel" style={{
+            maxWidth: 1280, margin:'0 auto', width:'100%',
+            padding:'12px 14px',
+            background:'linear-gradient(90deg, rgba(255,154,60,.10), transparent 70%)',
+            border:'1.5px solid rgba(255,154,60,.35)',
+          }}>
+            <div className="row" style={{ alignItems:'center', gap:10, marginBottom:8, flexWrap:'wrap' }}>
+              <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.18em' }}>GAME MODE</div>
+              <div style={{
+                fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.08em',
+                color:'var(--fire-3)',
+              }}>· {currentMode.name.toUpperCase()}</div>
+              <div style={{ flex:1 }}/>
+              <div style={{ fontSize:11, color:'var(--ink-3)' }}>Host picks the mode</div>
+            </div>
+            <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+              {allModes.map(m => {
+                const on = settings.mode === m.id;
+                return (
+                  <button key={m.id} onClick={() => onSettingsChange({ ...settings, mode: m.id })}
+                    className={`pill ${on ? 'on' : ''}`}
+                    style={{ border:'none', cursor:'pointer', gap:6 }}>
+                    <Icon id={m.iconId} size={12}/> {m.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* MINI-GAME while waiting — tap-the-target solo arcade */}
         <LobbyMiniGame profiles={profiles} />
         <div style={{ textAlign:'center', fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em', marginTop:2 }}>
@@ -2405,6 +2483,7 @@
         )}
         {stage === 'lobby' && (
           <Lobby profiles={profiles} onChange={setProfiles}
+                 settings={settings} onSettingsChange={setSettings}
                  onStart={startMatch} onBack={() => setStage('launch')} />
         )}
         {stage === 'arena' && (
