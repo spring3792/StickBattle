@@ -127,7 +127,16 @@
   // game-code display, a join URL, a live "Players joined" grid (simulated
   // by progressively spawning fake players), and a big START GAME button
   // that pulses once at least 1 player has joined.
-  function HostingScreen({ settings, onClose, onStart }) {
+  function HostingScreen({ settings, onSettingsChange, onClose, onStart }) {
+    // Mode + question-set pickers right inside the hosting screen so the host
+    // doesn't need to bounce back to the hub to configure the game.
+    const allModes = (D.MODES || []).filter(m => m.ready);
+    const allSets = Q.allSets();
+    const activeSet = allSets.find(s => s.id === settings.questionSetId) || allSets[0];
+    function pickMode(id) { onSettingsChange && onSettingsChange({ ...settings, mode: id }); }
+    function pickSet(id) { onSettingsChange && onSettingsChange({ ...settings, edu: true, questionSetId: id }); }
+    function pickNone() { onSettingsChange && onSettingsChange({ ...settings, edu: false }); }
+    const currentMode = allModes.find(m => m.id === settings.mode) || allModes[0];
     const POOL = ['xSt1ckLord','BowKing','FrostQueen','Vexo','PixelPunch','Razer',
       'Krang','MintCake','NeonRaven','BoomGuy','ChessMonk','Yeet','PingPong','Apex22','Lunar'];
     const PALETTE = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#fff'];
@@ -229,6 +238,74 @@
               <Icon id="check" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
               COPY CODE
             </button>
+          </div>
+        </div>
+
+        {/* ===== HOST PICKS: GAME MODE + QUESTION SET ===== */}
+        <div style={{
+          maxWidth:1100, width:'100%', margin:'24px auto 0',
+          display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:14,
+        }}>
+          {/* GAME MODE picker */}
+          <div className="panel" style={{
+            padding:'14px 16px',
+            background:'linear-gradient(120deg, rgba(255,77,46,.10), rgba(8,4,18,.7))',
+            border:'1.5px solid rgba(255,154,60,.4)',
+          }}>
+            <div className="row" style={{ alignItems:'center', marginBottom:8, gap:10 }}>
+              <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em' }}>GAME MODE</div>
+              <div style={{
+                fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.06em', color:'var(--fire-3)',
+              }}>· {currentMode.name.toUpperCase()}</div>
+            </div>
+            <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+              {allModes.map(m => {
+                const on = settings.mode === m.id;
+                return (
+                  <button key={m.id} onClick={() => pickMode(m.id)}
+                    className={`pill ${on ? 'on' : ''}`}
+                    style={{ border:'none', cursor:'pointer', gap:6 }}>
+                    <Icon id={m.iconId} size={12}/> {m.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* QUESTION SET picker (with None) */}
+          <div className="panel" style={{
+            padding:'14px 16px',
+            background:'linear-gradient(120deg, rgba(124,92,255,.10), rgba(8,4,18,.7))',
+            border:'1.5px solid rgba(124,92,255,.4)',
+          }}>
+            <div className="row" style={{ alignItems:'center', marginBottom:8, gap:10 }}>
+              <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em' }}>QUESTION SET</div>
+              <div style={{
+                fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.06em', color:'#a07bff',
+              }}>· {settings.edu ? activeSet.name.toUpperCase() : 'NONE'}</div>
+            </div>
+            <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+              <button onClick={pickNone}
+                className={`pill ${!settings.edu ? 'on' : ''}`}
+                style={{ border:'none', cursor:'pointer', gap:6, fontWeight:700 }}
+                title="No questions between rounds">
+                <Icon id="x" size={11}/> None
+              </button>
+              {allSets.map(s => {
+                const isActive = settings.edu && activeSet.id === s.id;
+                return (
+                  <button key={s.id} onClick={() => pickSet(s.id)}
+                    className={`pill ${isActive ? 'on' : ''}`}
+                    style={{ border:'none', cursor:'pointer', fontSize:11, gap:4 }}>
+                    <Icon id={s.source === 'custom' ? 'pencil' : 'book'} size={11}/>
+                    {s.name} <span style={{ opacity:.55 }}>({s.questions.length}q)</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
+              {settings.edu ? 'Questions appear between rounds.' : 'No questions — pure action.'}
+            </div>
           </div>
         </div>
 
@@ -2880,6 +2957,7 @@
         {showHostingScreen && (
           <HostingScreen
             settings={settings}
+            onSettingsChange={setSettings}
             onClose={() => setShowHostingScreen(false)}
             onStart={(joinedPlayers) => {
               // Slot the simulated joined players into the party so the lobby
