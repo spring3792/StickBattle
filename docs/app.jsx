@@ -597,27 +597,31 @@
                 ))}
               </div>
             </div>
-            <div className="section-card" style={{ margin:0 }}>
-              <div className="sc-h">Map</div>
-              <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
-                <button onClick={() => onChange({ ...settings, stageId: 'random' })}
-                  className={`pill ${(settings.stageId || 'random') === 'random' ? 'on' : ''}`}
-                  style={{ border:'none', cursor:'pointer', gap:6 }}>
-                  <Icon id="sparkle" size={12}/> Random
-                </button>
-                {D.STAGES.map(s => (
-                  <button key={s.id}
-                    onClick={() => onChange({ ...settings, stageId: s.id })}
-                    className={`pill ${settings.stageId === s.id ? 'on' : ''}`}
-                    style={{ border:'none', cursor:'pointer', gap:6 }}
-                    title={s.name}>
-                    <span style={{ width:10, height:10, borderRadius:2,
-                      background: s.accent || '#fff', display:'inline-block' }}/>
-                    {s.name}
+            {/* Regular stage map picker — hidden in TD mode (TD has its own
+                themed map picker below). Avoids two map cards on screen. */}
+            {settings.mode !== 'td' && (
+              <div className="section-card" style={{ margin:0 }}>
+                <div className="sc-h">Map</div>
+                <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+                  <button onClick={() => onChange({ ...settings, stageId: 'random' })}
+                    className={`pill ${(settings.stageId || 'random') === 'random' ? 'on' : ''}`}
+                    style={{ border:'none', cursor:'pointer', gap:6 }}>
+                    <Icon id="sparkle" size={12}/> Random
                   </button>
-                ))}
+                  {D.STAGES.map(s => (
+                    <button key={s.id}
+                      onClick={() => onChange({ ...settings, stageId: s.id })}
+                      className={`pill ${settings.stageId === s.id ? 'on' : ''}`}
+                      style={{ border:'none', cursor:'pointer', gap:6 }}
+                      title={s.name}>
+                      <span style={{ width:10, height:10, borderRadius:2,
+                        background: s.accent || '#fff', display:'inline-block' }}/>
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             {settings.mode === 'td' && (
               <React.Fragment>
                 <div className="section-card" style={{ margin:0 }}>
