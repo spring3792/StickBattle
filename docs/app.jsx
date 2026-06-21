@@ -123,6 +123,204 @@
   }
 
   // ============== launch screen (revamped) ==============
+  // Simple Host + Join row. Local mode: shows tiny inline "Lobby code" so
+  // friends can still pop in. Online mode: prominent gold-bordered card.
+  function HostJoinCard({ playMode, party }) {
+    const [joinCode, setJoinCode] = useState('');
+    const [showJoined, setShowJoined] = useState(null);
+    const hostCode = React.useMemo(() => {
+      try {
+        let c = localStorage.getItem('sf_host_code_v1');
+        if (!c) {
+          c = '';
+          const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          const u = D.getUser();
+          for (let i = 0; i < 6; i++) c += ch[Math.floor((u.charCodeAt(i % u.length) + i * 7) % ch.length)];
+          localStorage.setItem('sf_host_code_v1', c);
+        }
+        return c;
+      } catch(e) { return 'HOST01'; }
+    }, []);
+    function copyCode() {
+      try { navigator.clipboard && navigator.clipboard.writeText(hostCode); } catch(e){}
+      setShowJoined('Code copied');
+      setTimeout(() => setShowJoined(null), 1400);
+    }
+    function tryJoin() {
+      const code = joinCode.trim().toUpperCase();
+      if (!code) return;
+      // Local-only sim: treat any 6-char code as success, blank → fail.
+      if (code.length < 4) { setShowJoined('Code too short'); setTimeout(()=>setShowJoined(null), 1400); return; }
+      setShowJoined(`Joining ${code}…`);
+      setTimeout(() => setShowJoined('Joined lobby!'), 700);
+      setTimeout(() => setShowJoined(null), 2200);
+      setJoinCode('');
+    }
+    const isOnline = playMode === 'online';
+    return (
+      <div className="panel" style={{
+        padding:'12px 16px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+        background: isOnline
+          ? 'linear-gradient(90deg, rgba(255,215,106,.14), rgba(92,246,255,.10) 70%)'
+          : 'linear-gradient(90deg, rgba(255,154,60,.08), transparent 70%)',
+        border: isOnline ? '2px solid rgba(255,215,106,.45)' : '1.5px solid var(--line-2)',
+      }}>
+        {/* LEFT: hosting code */}
+        <div className="row" style={{ gap:10, alignItems:'center', flex:'1 1 240px', minWidth:200 }}>
+          <div style={{
+            width:36, height:36, borderRadius:8,
+            background: isOnline ? 'linear-gradient(140deg, #ffd76a, #ff9a3c)' : 'linear-gradient(140deg, var(--fire-2), var(--fire-1))',
+            color:'#fff', display:'grid', placeItems:'center', fontFamily:"'Bebas Neue'", fontSize:20,
+            boxShadow:'0 4px 12px rgba(0,0,0,.4)',
+          }}>H</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.2em' }}>YOUR LOBBY CODE</div>
+            <div style={{ fontFamily:"'Bebas Neue'", fontSize:22, letterSpacing:'.18em', color:'#ffd76a', lineHeight:1 }}>
+              {hostCode}
+            </div>
+          </div>
+          <button className="btn sm" onClick={copyCode}>
+            <Icon id="check" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+            Copy
+          </button>
+        </div>
+        {/* RIGHT: join input */}
+        <div className="row" style={{ gap:6, alignItems:'center', flex:'1 1 240px', minWidth:200 }}>
+          <input type="text" maxLength={8}
+            placeholder="JOIN BY CODE"
+            value={joinCode}
+            onChange={e => setJoinCode(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === 'Enter' && tryJoin()}
+            style={{
+              flex:1, padding:'8px 12px', textAlign:'center',
+              fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.18em',
+              background:'rgba(0,0,0,.45)', color:'#5cf6ff',
+              border:'1.5px solid var(--line-2)', borderRadius:6,
+            }}/>
+          <button className="btn sm" onClick={tryJoin}
+            style={{ background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' }}>
+            <Icon id="play" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+            Join
+          </button>
+        </div>
+        {showJoined && (
+          <div style={{
+            flex:'1 0 100%', textAlign:'center',
+            color: /fail|short/i.test(showJoined) ? '#ff8a9a' : '#5bff8a',
+            fontSize:13, fontWeight:700,
+          }}>{showJoined}</div>
+        )}
+      </div>
+    );
+  }
+
+  // ONLINE-mode hero replacement — big social lobby with party slots + FIND
+  // MATCH button. The vibe shifts from "configure a match" to "play with
+  // friends right now".
+  function OnlineLobbyCard({ selectedMode, party, onPlay, onQuickMatch, onOpenFriends }) {
+    const slots = 4;
+    const partyList = party || [];
+    return (
+      <div className="panel" style={{
+        padding:0, overflow:'hidden',
+        background:'linear-gradient(135deg, rgba(92,246,255,.18) 0%, rgba(42,123,255,.10) 50%, rgba(8,4,18,.95) 100%)',
+        border:'2.5px solid rgba(92,246,255,.55)',
+        boxShadow:'0 8px 32px rgba(92,246,255,.25)',
+      }}>
+        {/* Header strip */}
+        <div className="row" style={{
+          padding:'10px 16px', alignItems:'center',
+          background:'rgba(0,0,0,.35)', borderBottom:'1px solid rgba(92,246,255,.3)',
+        }}>
+          <span style={{
+            width:9, height:9, borderRadius:'50%', background:'#5bff8a',
+            boxShadow:'0 0 8px #5bff8a', marginRight:8,
+          }}/>
+          <span style={{ fontSize:11, color:'#5cf6ff', letterSpacing:'.22em', fontWeight:800 }}>
+            ONLINE LOBBY · PING 42ms · NA-EAST
+          </span>
+        </div>
+        <div style={{ padding:'18px 20px' }}>
+          {/* Party slots — Fortnite-style row */}
+          <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.22em', marginBottom:8 }}>
+            YOUR SQUAD ({partyList.length + 1}/{slots})
+          </div>
+          <div className="row" style={{ gap:8, marginBottom:16, flexWrap:'wrap' }}>
+            {/* You */}
+            <div style={{
+              width:80, padding:'10px 8px', borderRadius:10, textAlign:'center',
+              background:'linear-gradient(180deg, rgba(92,246,255,.18), rgba(92,246,255,.04))',
+              border:'2px solid #5cf6ff',
+            }}>
+              <div style={{
+                width:42, height:42, borderRadius:'50%', margin:'0 auto 6px',
+                background:`linear-gradient(135deg, ${D.getPlayerColor(D.getUser()) || '#5cf6ff'}, ${mixToBlack(D.getPlayerColor(D.getUser()) || '#5cf6ff', .4)})`,
+                display:'grid', placeItems:'center', color:'#fff', fontFamily:"'Bebas Neue'", fontSize:20,
+                border:'2px solid rgba(255,255,255,.4)',
+              }}>{(D.getDisplayName(D.getUser()) || '?').slice(0,1).toUpperCase()}</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#fff' }}>YOU</div>
+            </div>
+            {partyList.map(p => (
+              <div key={p.id} style={{
+                width:80, padding:'10px 8px', borderRadius:10, textAlign:'center',
+                background:'linear-gradient(180deg, rgba(123,255,138,.18), rgba(123,255,138,.04))',
+                border:'2px solid #7bff8a',
+              }}>
+                <div style={{
+                  width:42, height:42, borderRadius:'50%', margin:'0 auto 6px',
+                  background:`linear-gradient(135deg, ${p.color || '#7bff8a'}, ${mixToBlack(p.color || '#7bff8a', .4)})`,
+                  display:'grid', placeItems:'center', color:'#fff', fontFamily:"'Bebas Neue'", fontSize:20,
+                  border:'2px solid rgba(255,255,255,.4)',
+                }}>{(p.name || '?').slice(0,1).toUpperCase()}</div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#aaffc4', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</div>
+              </div>
+            ))}
+            {Array.from({ length: Math.max(0, slots - 1 - partyList.length) }).map((_, i) => (
+              <button key={i} onClick={onOpenFriends} style={{
+                width:80, padding:'10px 8px', borderRadius:10, textAlign:'center',
+                background:'rgba(255,255,255,.02)',
+                border:'2px dashed rgba(255,255,255,.18)',
+                cursor:'pointer', color:'var(--ink-3)',
+              }}>
+                <div style={{
+                  width:42, height:42, borderRadius:'50%', margin:'0 auto 6px',
+                  background:'rgba(255,255,255,.05)', display:'grid', placeItems:'center',
+                  fontSize:22, color:'var(--ink-3)',
+                }}>+</div>
+                <div style={{ fontSize:10, fontWeight:700 }}>INVITE</div>
+              </button>
+            ))}
+          </div>
+          {/* Selected mode summary + big actions */}
+          <div className="row" style={{ gap:10, alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ flex:'1 1 220px', minWidth:160 }}>
+              <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.22em' }}>SELECTED MODE</div>
+              <div style={{
+                fontFamily:"'Bebas Neue'", fontSize:32, lineHeight:1, color:'#5cf6ff',
+                textShadow:'0 0 16px rgba(92,246,255,.5)',
+              }}>{selectedMode.name.toUpperCase()}</div>
+            </div>
+            <button className="btn big" onClick={onPlay}
+              style={{
+                flex:'1 1 200px', minWidth:160, padding:'14px 22px', fontSize:20,
+                background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428',
+                fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                boxShadow:'0 6px 24px rgba(92,246,255,.5)',
+              }}>
+              <Icon id="play" size={22} style={{verticalAlign:'middle', marginRight:8}}/>
+              FIND MATCH
+            </button>
+            <button className="btn" onClick={onQuickMatch}
+              style={{ padding:'12px 18px', fontSize:14 }}>
+              <Icon id="sparkle" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
+              RANDOM
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins,
     playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge }) {
     const title = D.eduTitle(settings.edu);
@@ -294,7 +492,19 @@
           </div>
         )}
 
-        {/* HERO STRIP: selected mode big banner */}
+        {/* SIMPLE HOST/JOIN CARD — always visible, more prominent in online mode */}
+        <HostJoinCard playMode={playMode} party={party} />
+
+        {/* ONLINE-MODE BIG LOBBY CARD — replaces the hero strip when in online */}
+        {playMode === 'online' ? (
+          <OnlineLobbyCard
+            selectedMode={selectedMode}
+            party={party}
+            onPlay={onPlay}
+            onQuickMatch={onQuickMatch}
+            onOpenFriends={onOpenFriends}
+          />
+        ) : (
         <div className="panel" style={{
           padding:'18px 22px',
           background:`linear-gradient(135deg, rgba(255,77,46,.15), transparent 60%), var(--card-bg)`,
@@ -328,6 +538,7 @@
             PLAY
           </button>
         </div>
+        )}
 
         {/* TWO-COLUMN: modes (left) + setup (right) */}
         <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.4fr) minmax(0, 1fr)', gap:14 }}>
@@ -2084,11 +2295,23 @@
               const next = playQueue[0];
               setPlayQueue(playQueue.slice(1));
               setMatchWinner(null);
-              const newSettings = { ...settings, mode: next.mode };
+              // Queued matches read as multiplayer: force ONLINE flavour so any
+              // remaining bot slots get gamer-tag names (xSt1ckLord, Vexo…), and
+              // size the lobby to party.length+1 so there are no bot fillers
+              // beyond what's needed.
+              const partyTotal = party.length + 1;
+              const playerCount = Math.max(2, Math.min(4, partyTotal));
+              const newSettings = {
+                ...settings,
+                mode: next.mode,
+                players: String(playerCount),
+              };
               if (next.tdMapId) newSettings.tdMapId = next.tdMapId;
               setSettings(newSettings);
-              // Defer a tick so settings is committed before startMatch reads it.
-              setTimeout(() => startMatch(), 50);
+              changePlayMode('online');
+              // Build the lobby (which also seeds party + challenge); player
+              // hits FIGHT from there to drop in.
+              setTimeout(() => startLobby(), 50);
             } : null}
             onMenu={() => { setMatchWinner(null); setStage('launch'); }} />
         )}
