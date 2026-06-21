@@ -123,7 +123,8 @@
   }
 
   // ============== launch screen (revamped) ==============
-  function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins }) {
+  function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins,
+    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge }) {
     const title = D.eduTitle(settings.edu);
     const sub = D.eduSub(settings.edu);
     const allSets = Q.allSets();
@@ -146,6 +147,10 @@
           onOpenCodes={onOpenCodes} onOpenFriends={onOpenFriends}
           onOpenProfile={onOpenProfile}
           onOpenQueue={onOpenQueue} queueCount={queueCount}
+          playMode={playMode} onChangePlayMode={onChangePlayMode}
+          onQuickMatch={onQuickMatch}
+          party={party} onClearParty={onClearParty}
+          challengeFriend={challengeFriend} onClearChallenge={onClearChallenge}
           onOpenTrade={onOpenTrade} onPreviewSet={onPreviewSet} />
       </div>
     );
@@ -155,7 +160,8 @@
   function NewLaunchUI({ settings, onChange, coins, title, sub, selectedMode,
     readyModes, soonModes, allSets, activeSet,
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
-    onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet }) {
+    onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet,
+    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge }) {
     // Chip helper — icon only on narrow, icon+label otherwise
     const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
@@ -204,6 +210,89 @@
             <Chip icon="settings" label="Settings" onClick={onOpenSettings}/>
           </div>
         </div>
+
+        {/* PLAY MODE + QUICK MATCH bar — pick local/online and one-tap Quick Match */}
+        <div className="panel" style={{
+          padding:'10px 14px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+          background:'linear-gradient(90deg, rgba(92,246,255,.08), transparent 70%)',
+          border:'1.5px solid rgba(92,246,255,.35)',
+        }}>
+          <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.18em' }}>PLAY MODE</div>
+          <div style={{ display:'flex', gap:0, background:'rgba(0,0,0,.45)',
+            borderRadius:8, border:'1.5px solid var(--line-2)', overflow:'hidden' }}>
+            <button onClick={() => onChangePlayMode && onChangePlayMode('local')}
+              style={{
+                padding:'6px 14px', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                background: playMode === 'local' ? 'linear-gradient(180deg, var(--fire-2), var(--fire-1))' : 'transparent',
+                color: playMode === 'local' ? '#fff' : 'var(--ink-2)',
+                border:'none', cursor:'pointer', fontSize:14,
+              }}>LOCAL</button>
+            <button onClick={() => onChangePlayMode && onChangePlayMode('online')}
+              style={{
+                padding:'6px 14px', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                background: playMode === 'online' ? 'linear-gradient(180deg, #5cf6ff, #2a7bff)' : 'transparent',
+                color: playMode === 'online' ? '#001428' : 'var(--ink-2)',
+                border:'none', cursor:'pointer', fontSize:14,
+              }}>ONLINE</button>
+          </div>
+          <div style={{ flex:1 }}/>
+          <button onClick={onQuickMatch} className="btn"
+            style={{
+              background:'linear-gradient(180deg, #5cf6ff, #2a7bff)',
+              color:'#001428', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+              padding:'8px 18px', fontSize:16,
+            }}>
+            <Icon id="sparkle" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
+            QUICK MATCH
+          </button>
+        </div>
+
+        {/* Active PARTY / CHALLENGE banner — only when one or both are set */}
+        {((party && party.length > 0) || challengeFriend) && (
+          <div className="panel" style={{
+            padding:'10px 14px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+            background:'linear-gradient(90deg, rgba(123,255,138,.10), transparent 70%)',
+            border:'1.5px solid rgba(123,255,138,.35)',
+          }}>
+            {party && party.length > 0 && (
+              <>
+                <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.18em' }}>PARTY</div>
+                <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+                  {party.map(p => (
+                    <span key={p.id} className="pill" style={{
+                      background:'rgba(123,255,138,.15)', border:'1px solid #7bff8a',
+                      color:'#aaffc4', fontWeight:700,
+                    }}>
+                      <span style={{
+                        width:8, height:8, borderRadius:'50%', background:p.color || '#7bff8a',
+                        display:'inline-block', marginRight:6,
+                      }}/>
+                      {p.name}
+                    </span>
+                  ))}
+                </div>
+                <button className="btn sm ghost" onClick={onClearParty}
+                  style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                  <Icon id="x" size={11}/> Leave party
+                </button>
+              </>
+            )}
+            {challengeFriend && (
+              <>
+                <div style={{ fontSize:11, color:'#ff8a9a', letterSpacing:'.18em', marginLeft:party && party.length ? 14 : 0 }}>CHALLENGE</div>
+                <span className="pill" style={{
+                  background:'rgba(255,91,110,.15)', border:'1px solid #ff5b6e',
+                  color:'#ff8a9a', fontWeight:700,
+                }}>
+                  vs <strong>{challengeFriend.name}</strong>
+                </span>
+                <button className="btn sm ghost" onClick={onClearChallenge}>
+                  <Icon id="x" size={11}/> Cancel
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* HERO STRIP: selected mode big banner */}
         <div className="panel" style={{
@@ -1681,6 +1770,26 @@
     // play one after another. When a match ends and the queue is non-empty,
     // the next entry auto-starts.
     const [playQueue, setPlayQueue] = useState([]);
+    // Local vs Online flavour. Online runs the same engine but shows a
+    // matchmaking overlay and labels opponents with friend-style names so it
+    // feels like multiplayer (the engine is still local with bots — there is
+    // no real net code, just the UX surface).
+    const [playMode, setPlayMode] = useState(() => {
+      try { return localStorage.getItem('sf_play_mode_v1') || 'local'; } catch(e) { return 'local'; }
+    });
+    function changePlayMode(m) {
+      setPlayMode(m);
+      try { localStorage.setItem('sf_play_mode_v1', m); } catch(e){}
+    }
+    // Party — friends queued up alongside the player for the next match. Each
+    // entry is the friend object from D.getFriends(). They take bot slots and
+    // are drawn with the friend's name + color (so it reads as a co-op feel).
+    const [party, setParty] = useState([]);
+    // Challenge — opponent friend slotted into the next match's bot side.
+    const [challengeFriend, setChallengeFriend] = useState(null);
+    // Matchmaking pulse — true while the "ONLINE" flavour shows a brief
+    // matchmaking overlay before dropping the player into a match.
+    const [matchmaking, setMatchmaking] = useState(false);
     // First-run login gate: any session where the user hasn't explicitly logged
     // in shows the LoginScreen first. Cleared once they pick LOG IN or SIGN UP.
     const [needLogin, setNeedLogin] = useState(() => {
@@ -1705,6 +1814,15 @@
     }, [settings.edu]);
 
     function startLobby() {
+      // ONLINE flavour: brief matchmaking overlay before dropping in.
+      if (playMode === 'online') {
+        setMatchmaking(true);
+        setTimeout(() => { setMatchmaking(false); _buildLobby(); }, 1400);
+      } else {
+        _buildLobby();
+      }
+    }
+    function _buildLobby() {
       let count = 2;
       let lockedBots = [];
       switch (settings.players) {
@@ -1713,22 +1831,44 @@
         case '3': count = 3; break;
         case '4': count = 4; break;
       }
+      // Party + challenge bake into bot slots so it FEELS like multi-player.
+      // - Party friends fill the friendly bot slots after slot 0 (the human).
+      // - Challenge friend takes the LAST bot slot (the opponent).
+      // - Online flavour also gives generic bots cool gamer-tag style names.
+      const partyList = party.slice();
+      const chall = challengeFriend;
       const built = [];
       // Pull the human player's saved profile colour so it seeds slot 0.
       const savedColor = D.getPlayerColor(D.getUser());
       const savedName = D.getDisplayName(D.getUser());
+      // Pool of fun fake opponents shown in ONLINE mode (cycled deterministically).
+      const onlineNames = ['xSt1ckLord','BowKing77','FrostQueen','Vexo','PixelPunch','Razer',
+                           'Krang_2k','MintCake','NeonRaven','BoomGuy','ChessMonk','Yeet'];
       for (let i = 0; i < count; i++) {
         const c = D.PLAYER_COLORS[i];
         const isBot = lockedBots.includes(i);
         // Slot 0 always belongs to the human unless they locked it as a bot.
         const isHumanSlot = (i === 0 && !isBot);
-        const useColor = isHumanSlot && savedColor ? savedColor : c.color;
-        // Derive a darker stroke from any custom color (rough approximation).
-        const useDark  = isHumanSlot && savedColor ? mixToBlack(savedColor, 0.55) : c.dark;
+        let useColor = isHumanSlot && savedColor ? savedColor : c.color;
+        let useDark  = isHumanSlot && savedColor ? mixToBlack(savedColor, 0.55) : c.dark;
+        let useName  = isBot ? `CPU ${i+1}` : (isHumanSlot ? savedName : `Player ${i+1}`);
+        // CHALLENGE: opponent friend (last bot slot)
+        if (isBot && chall && i === count - 1) {
+          useName = chall.name; useColor = chall.color || useColor; useDark = mixToBlack(useColor, 0.55);
+        }
+        // PARTY: friend bots fill the middle bot slots
+        else if (isBot && partyList.length > 0 && i > 0 && i < count - 1) {
+          const p = partyList.shift();
+          if (p) { useName = p.name; useColor = p.color || useColor; useDark = mixToBlack(useColor, 0.55); }
+        }
+        // ONLINE flavour: dress generic CPU names as fake online tags.
+        else if (isBot && playMode === 'online' && useName.startsWith('CPU')) {
+          useName = onlineNames[(i + Math.floor(Date.now()/1000)) % onlineNames.length];
+        }
         built.push({
           _slot: i, _score: 0, _target: settings.target,
           isBot, lockedBot: isBot,
-          name: isBot ? `CPU ${i+1}` : (isHumanSlot ? savedName : `Player ${i+1}`),
+          name: useName,
           colorId: c.id, color: useColor, darkColor: useDark,
           hatId: 'none',    hat:    D.HATS[0],
           outfitId: 'none', outfit: D.OUTFITS[0],
@@ -1739,11 +1879,31 @@
       }
       setProfiles(built);
       setStage('lobby');
+      // Challenge is one-shot — consume after wiring into the lobby.
+      if (chall) setChallengeFriend(null);
     }
 
     function startMatch() {
       setProfiles(profiles.map(p => ({ ...p, _score: 0, buffs: [] })));
       setStage('arena');
+    }
+    // Random mode + map. Used by Quick Match and the "+ Random" queue button.
+    function randomMatchItem() {
+      const modes = ['fight','sumo','koth','bomb','last','parkour','golf','td'];
+      const m = modes[Math.floor(Math.random() * modes.length)];
+      const item = { mode: m };
+      if (m === 'td') {
+        const ids = (G.TD_PATH_IDS || ['zigzag']);
+        item.tdMapId = ids[Math.floor(Math.random() * ids.length)];
+      }
+      return item;
+    }
+    function quickMatch() {
+      const item = randomMatchItem();
+      const newSettings = { ...settings, mode: item.mode };
+      if (item.tdMapId) newSettings.tdMapId = item.tdMapId;
+      setSettings(newSettings);
+      setTimeout(() => startLobby(), 50);
     }
 
     function onRoundEnd(winnerSlot, pointsDelta = 1) {
@@ -1863,6 +2023,13 @@
             onOpenProfile={() => setShowProfile(true)}
             onOpenQueue={() => setShowQueue(true)}
             queueCount={playQueue.length}
+            playMode={playMode}
+            onChangePlayMode={changePlayMode}
+            onQuickMatch={quickMatch}
+            party={party}
+            onClearParty={() => setParty([])}
+            challengeFriend={challengeFriend}
+            onClearChallenge={() => setChallengeFriend(null)}
             onOpenCrates={() => setShowCrates(true)}
             onOpenCodes={() => setShowCodes(true)}
             onOpenFriends={() => setShowFriends(true)}
@@ -1994,7 +2161,21 @@
         )}
         {showFriends && (
           <FriendsModal onClose={() => setShowFriends(false)}
-            onOpenTrade={(f) => { setShowFriends(false); setTradeFriend(f); setShowTrade(true); }} />
+            onOpenTrade={(f) => { setShowFriends(false); setTradeFriend(f); setShowTrade(true); }}
+            party={party}
+            onToggleParty={(f) => {
+              setParty(prev => prev.find(p => p.id === f.id)
+                ? prev.filter(p => p.id !== f.id)
+                : [...prev, f]);
+            }}
+            onChallenge={(f) => {
+              setChallengeFriend(f);
+              setShowFriends(false);
+              // Default to a 1v1 vs bot so the friend is the opponent.
+              setSettings({ ...settings, players: '1v1bot' });
+              setTimeout(() => startLobby(), 80);
+            }}
+          />
         )}
         {showTrade && (
           <TradingModal friend={tradeFriend}
@@ -2014,7 +2195,22 @@
             onAdd={(item) => setPlayQueue([...playQueue, item])}
             onRemove={(idx) => setPlayQueue(playQueue.filter((_, i) => i !== idx))}
             onClear={() => setPlayQueue([])}
+            onAddRandom={() => setPlayQueue([...playQueue, randomMatchItem()])}
           />
+        )}
+        {/* Matchmaking pseudo-overlay — only shown for the ONLINE flavour. */}
+        {matchmaking && (
+          <div style={{ position:'fixed', inset:0, zIndex:120,
+            background:'rgba(2,4,12,.88)', display:'grid', placeItems:'center', backdropFilter:'blur(6px)' }}>
+            <div className="panel" style={{ width:'min(380px, 90vw)', textAlign:'center' }}>
+              <div style={{ width:60, height:60, borderRadius:'50%', margin:'0 auto 14px',
+                border:'4px solid rgba(92,246,255,.3)',
+                borderTopColor:'#5cf6ff', animation:'spin 0.9s linear infinite' }}/>
+              <div className="title-art" style={{ fontSize:30, color:'#5cf6ff' }}>MATCHMAKING</div>
+              <div className="title-sub">finding worthy opponents…</div>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          </div>
         )}
         {previewSet && (
           <SetPreviewModal set={previewSet} onClose={() => setPreviewSet(null)} />
@@ -2248,7 +2444,7 @@
   }
 
   // ============== friends modal ==============
-  function FriendsModal({ onClose, onOpenTrade }) {
+  function FriendsModal({ onClose, onOpenTrade, party, onToggleParty, onChallenge }) {
     const [friends, setFriends] = useState(D.getFriends());
     const [input, setInput] = useState('');
     const [msg, setMsg] = useState('');
@@ -2310,6 +2506,30 @@
                         {online ? 'Online' : 'Offline'}
                       </div>
                     </div>
+                    {onChallenge && (
+                      <button className="btn sm"
+                        onClick={() => onChallenge(f)}
+                        title="Start a 1v1 match against this friend"
+                        style={{
+                          background:'linear-gradient(180deg, #ff8a3d, #ff4d2e)',
+                          color:'#fff', border:'none',
+                        }}>
+                        <Icon id="play" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                        Challenge
+                      </button>
+                    )}
+                    {onToggleParty && (
+                      <button className="btn sm ghost"
+                        onClick={() => onToggleParty(f)}
+                        title={(party || []).find(p => p.id === f.id) ? 'Leave party' : 'Add to party'}
+                        style={{
+                          borderColor: (party || []).find(p => p.id === f.id) ? '#7bff8a' : 'var(--line-2)',
+                          color: (party || []).find(p => p.id === f.id) ? '#aaffc4' : 'var(--ink-2)',
+                        }}>
+                        <Icon id="users" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                        {(party || []).find(p => p.id === f.id) ? 'In Party' : 'Party'}
+                      </button>
+                    )}
                     <button className="btn sm ghost"
                       disabled={!online}
                       onClick={() => onOpenTrade && onOpenTrade(f)}
@@ -2830,7 +3050,7 @@
 
   // PLAY QUEUE — stack of {mode, tdMapId?} entries that auto-advance through
   // the Match Results "Next in Queue" button. The user manages the list here.
-  function QueueModal({ queue, settings, onClose, onAdd, onRemove, onClear }) {
+  function QueueModal({ queue, settings, onClose, onAdd, onRemove, onClear, onAddRandom }) {
     const MODES = [
       { id:'fight',   label:'Stick Fight' },
       { id:'sumo',    label:'Sumo Push' },
@@ -2890,14 +3110,20 @@
                 </div>
               </div>
             )}
-            <button className="btn sm" style={{ marginTop:10 }}
-              onClick={() => {
-                const item = { mode: pickedMode };
-                if (pickedMode === 'td') item.tdMapId = pickedMap;
-                onAdd(item);
-              }}>
-              <Icon id="check" size={12}/> + Add to Queue
-            </button>
+            <div className="row" style={{ gap:8, marginTop:10, flexWrap:'wrap' }}>
+              <button className="btn sm"
+                onClick={() => {
+                  const item = { mode: pickedMode };
+                  if (pickedMode === 'td') item.tdMapId = pickedMap;
+                  onAdd(item);
+                }}>
+                <Icon id="check" size={12}/> + Add to Queue
+              </button>
+              <button className="btn sm" onClick={onAddRandom}
+                style={{ background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' }}>
+                <Icon id="sparkle" size={12}/> + Random
+              </button>
+            </div>
           </div>
 
           {/* Current queue list */}
