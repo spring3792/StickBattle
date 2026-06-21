@@ -134,7 +134,7 @@
     const soonModes  = D.MODES.filter(m => !m.ready);
     const selectedMode = D.MODES.find(m => m.id === settings.mode) || readyModes[0];
     return (
-      <div style={{ position:'absolute', inset:0, overflow:'auto', zIndex:2, padding:'16px 16px 32px' }}>
+      <div style={{ position:'absolute', inset:0, overflowY:'auto', overflowX:'hidden', zIndex:2, padding:'16px 16px 80px', WebkitOverflowScrolling:'touch' }}>
         <NewLaunchUI
           settings={settings} onChange={onChange}
           coins={coins}
@@ -1605,7 +1605,7 @@
       const ok = D.verifyPassword(pickedName, password);
       if (!ok) { setError('Wrong password'); return; }
       D.setUser(pickedName);
-      try { sessionStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
+      try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
       onLoggedIn(pickedName);
     }
     if (users.length === 0) {
@@ -1688,7 +1688,7 @@
       D.setUser(clean);                     // also writes it into the list
       if (password) D.setPassword(clean, password);
       if (avatar)   D.setAvatar(clean, avatar);
-      try { sessionStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
+      try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
       onLoggedIn(clean);
     }
     return (
@@ -1794,8 +1794,9 @@
     // in shows the LoginScreen first. Cleared once they pick LOG IN or SIGN UP.
     const [needLogin, setNeedLogin] = useState(() => {
       try {
-        // Returning users (have a saved list) must explicitly Log In this session.
-        return !sessionStorage.getItem('sf_logged_in_v1');
+        // Stay logged in across refreshes — only force login again after an
+        // explicit Log Out from the Profile modal.
+        return !localStorage.getItem('sf_logged_in_v1');
       } catch(e) { return true; }
     });
     const [tradeFriend, setTradeFriend] = useState(null); // friend object or null = chooser
@@ -2153,7 +2154,7 @@
               // Force friends + owned panels to refresh by closing modal.
             }}
             onLogout={() => {
-              try { sessionStorage.removeItem('sf_logged_in_v1'); } catch(e){}
+              try { localStorage.removeItem('sf_logged_in_v1'); } catch(e){}
               setShowProfile(false);
               setNeedLogin(true);
               setStage('launch');
@@ -3048,8 +3049,9 @@
     );
   }
 
-  // PLAY QUEUE — stack of {mode, tdMapId?} entries that auto-advance through
-  // the Match Results "Next in Queue" button. The user manages the list here.
+  // PLAY QUEUE — Fortnite-style mode-select panel. Big hero card with the
+  // currently-selected match on the left, the queue line-up on the right, and
+  // a chunky PLAY button below. Plus mode pills + Random + Host code.
   function QueueModal({ queue, settings, onClose, onAdd, onRemove, onClear, onAddRandom }) {
     const MODES = [
       { id:'fight',   label:'Stick Fight' },
@@ -3064,35 +3066,160 @@
     const [pickedMode, setPickedMode] = useState(settings.mode || 'fight');
     const [pickedMap, setPickedMap] = useState('random');
     const modeLabel = (id) => (MODES.find(m => m.id === id) || {}).label || id;
+    // Mode colors / banners — feels like a Fortnite "play" lobby tile.
+    const MODE_COLORS = {
+      fight:   { hue: '#ff5b6e', tag: 'BRAWL' },
+      sumo:    { hue: '#ffd76a', tag: 'PUSH' },
+      koth:    { hue: '#a07bff', tag: 'CONTROL' },
+      bomb:    { hue: '#ff9a3c', tag: 'TAG' },
+      last:    { hue: '#7c5cff', tag: 'SURVIVE' },
+      parkour: { hue: '#5cf6ff', tag: 'RACE' },
+      golf:    { hue: '#5bff8a', tag: 'STROKES' },
+      td:      { hue: '#ff7a3c', tag: 'DEFEND' },
+    };
+    const upNext = queue[0] || { mode: pickedMode, tdMapId: pickedMode === 'td' ? pickedMap : undefined };
+    const nextColor = MODE_COLORS[upNext.mode] || { hue:'#5cf6ff', tag:'MATCH' };
+    const tdNameFor = (id) => id && id !== 'random'
+      ? ((G.TD_MAP_THEMES && G.TD_MAP_THEMES[id] && G.TD_MAP_THEMES[id].name) || id) : null;
+    // Stable per-session host code so it reads like a real lobby code.
+    const hostCode = React.useMemo(() => {
+      try {
+        let c = localStorage.getItem('sf_host_code_v1');
+        if (!c) {
+          c = '';
+          const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          for (let i = 0; i < 6; i++) c += ch[Math.floor((D.getUser().charCodeAt(i % D.getUser().length) + i * 7) % ch.length)];
+          localStorage.setItem('sf_host_code_v1', c);
+        }
+        return c;
+      } catch(e) { return 'HOST01'; }
+    }, []);
+    function copyCode() {
+      try { navigator.clipboard && navigator.clipboard.writeText(hostCode); } catch(e){}
+    }
     return (
       <div style={{ position:'fixed', inset:0, zIndex:90,
-        background:'rgba(0,0,0,.65)', display:'grid', placeItems:'center', padding:14 }}>
-        <div className="panel" style={{ width:'min(520px, 94vw)' }}>
-          <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+        background:'rgba(2,4,12,.82)', display:'grid', placeItems:'center',
+        padding:14, overflowY:'auto', backdropFilter:'blur(4px)' }}>
+        <div className="panel" style={{
+          width:'min(820px, 96vw)', maxHeight:'94vh', overflowY:'auto',
+          padding:0,
+          background:'linear-gradient(160deg, rgba(20,10,40,.95), rgba(8,4,18,.97))',
+          border:'2px solid rgba(92,246,255,.25)',
+        }}>
+          {/* HEADER */}
+          <div className="row" style={{
+            justifyContent:'space-between', alignItems:'center',
+            padding:'14px 20px', borderBottom:'1px solid var(--line)',
+            background:'linear-gradient(90deg, rgba(92,246,255,.12), transparent 70%)',
+          }}>
             <div>
-              <div className="title-art" style={{ fontSize:28, lineHeight:.9 }}>PLAY QUEUE</div>
-              <div className="title-sub">Auto-play your next picks back-to-back</div>
+              <div className="title-art" style={{ fontSize:32, lineHeight:.85 }}>PLAY QUEUE</div>
+              <div className="title-sub">Pick. Queue. Crush.</div>
             </div>
             <button className="btn sm ghost" onClick={onClose}>
               <Icon id="x" size={12}/> Close
             </button>
           </div>
 
-          {/* Pick mode + map to add */}
-          <div className="section-card" style={{ marginBottom:10 }}>
-            <div className="sc-h">Add to queue</div>
-            <div className="row" style={{ flexWrap:'wrap', gap:6 }}>
-              {MODES.map(m => (
-                <button key={m.id} onClick={() => setPickedMode(m.id)}
-                  className={`pill ${pickedMode === m.id ? 'on' : ''}`}
-                  style={{ border:'none', cursor:'pointer' }}>
-                  {m.label}
-                </button>
-              ))}
+          <div style={{ padding:'14px 20px 18px' }}>
+            {/* ===== FORTNITE-STYLE HERO CARD ===== */}
+            <div style={{
+              position:'relative', overflow:'hidden', borderRadius:14,
+              border:`3px solid ${nextColor.hue}`,
+              background:`linear-gradient(120deg, ${nextColor.hue}33 0%, rgba(8,4,18,.95) 60%)`,
+              padding:'22px 22px',
+              display:'grid', gridTemplateColumns:'1fr auto', gap:14,
+              boxShadow:`0 8px 32px ${nextColor.hue}44`,
+              marginBottom:14,
+            }}>
+              {/* Decorative diagonal stripes (Fortnite vibe) */}
+              <div style={{
+                position:'absolute', top:0, right:0, bottom:0, width:160,
+                background:`repeating-linear-gradient(135deg, ${nextColor.hue}33 0 6px, transparent 6px 16px)`,
+                opacity:0.6, pointerEvents:'none',
+              }}/>
+              <div style={{ position:'relative', zIndex:1 }}>
+                <div style={{
+                  fontSize:11, color:nextColor.hue, letterSpacing:'.25em',
+                  fontWeight:800, marginBottom:4,
+                }}>
+                  {queue.length > 0 ? '▸ UP NEXT' : '▸ NOW PLAYING'} · {nextColor.tag}
+                </div>
+                <div className="title-art" style={{ fontSize:46, lineHeight:.85, marginBottom:8 }}>
+                  {modeLabel(upNext.mode).toUpperCase()}
+                </div>
+                {tdNameFor(upNext.tdMapId) && (
+                  <div style={{ fontSize:14, color:'#fff', opacity:.8 }}>
+                    on <strong style={{ color:nextColor.hue }}>{tdNameFor(upNext.tdMapId)}</strong>
+                  </div>
+                )}
+                <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:10 }}>
+                  Queue: <strong style={{ color:'#fff' }}>{queue.length}</strong> match{queue.length === 1 ? '' : 'es'} lined up
+                </div>
+              </div>
+              {/* Big mode-color disc */}
+              <div style={{
+                width:90, height:90, borderRadius:'50%',
+                background:`radial-gradient(circle at 30% 25%, #fff 0%, ${nextColor.hue} 50%, ${nextColor.hue}66 100%)`,
+                boxShadow:`0 0 32px ${nextColor.hue}88`,
+                display:'grid', placeItems:'center',
+                position:'relative', zIndex:1,
+              }}>
+                <Icon id="play" size={42} color="#fff"/>
+              </div>
             </div>
+
+            {/* ===== MODE TILE GRID — pick what to add ===== */}
+            <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em', marginBottom:8 }}>
+              CHANGE GAME MODE
+            </div>
+            <div style={{
+              display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(118px, 1fr))',
+              gap:8, marginBottom:14,
+            }}>
+              {MODES.map(m => {
+                const c = MODE_COLORS[m.id] || { hue:'#5cf6ff', tag:'MATCH' };
+                const on = pickedMode === m.id;
+                return (
+                  <button key={m.id} onClick={() => setPickedMode(m.id)}
+                    style={{
+                      position:'relative', cursor:'pointer',
+                      padding:'14px 10px 10px', borderRadius:10,
+                      background: on
+                        ? `linear-gradient(160deg, ${c.hue}44, ${c.hue}11)`
+                        : 'rgba(255,255,255,.03)',
+                      border: `2px solid ${on ? c.hue : 'var(--line)'}`,
+                      color: on ? '#fff' : 'var(--ink-2)',
+                      textAlign:'left',
+                      boxShadow: on ? `0 4px 20px ${c.hue}55` : 'none',
+                      transition:'transform .12s ease',
+                      transform: on ? 'translateY(-2px)' : 'none',
+                    }}>
+                    <div style={{
+                      width:28, height:28, borderRadius:6,
+                      background:`linear-gradient(140deg, ${c.hue}, ${c.hue}99)`,
+                      display:'grid', placeItems:'center', marginBottom:6,
+                    }}>
+                      <Icon id="play" size={16} color="#fff"/>
+                    </div>
+                    <div style={{ fontFamily:"'Bebas Neue'", fontSize:16, letterSpacing:'.05em' }}>
+                      {m.label.toUpperCase()}
+                    </div>
+                    <div style={{ fontSize:10, color:c.hue, letterSpacing:'.18em', marginTop:2 }}>
+                      {c.tag}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* TD-specific map subpicker (only when TD is the picked mode) */}
             {pickedMode === 'td' && (
-              <div style={{ marginTop:8 }}>
-                <div style={{ fontSize:11, color:'var(--ink-3)', marginBottom:4 }}>TD MAP</div>
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em', marginBottom:6 }}>
+                  TD MAP
+                </div>
                 <div className="row" style={{ flexWrap:'wrap', gap:6 }}>
                   <button onClick={() => setPickedMap('random')}
                     className={`pill ${pickedMap === 'random' ? 'on' : ''}`}
@@ -3110,66 +3237,111 @@
                 </div>
               </div>
             )}
-            <div className="row" style={{ gap:8, marginTop:10, flexWrap:'wrap' }}>
-              <button className="btn sm"
+
+            {/* ===== ADD ROW ===== */}
+            <div className="row" style={{ gap:10, marginBottom:14, flexWrap:'wrap' }}>
+              <button className="btn"
+                style={{ flex:1, minWidth:160, padding:'12px 18px', fontSize:16, fontFamily:"'Bebas Neue'", letterSpacing:'.08em' }}
                 onClick={() => {
                   const item = { mode: pickedMode };
                   if (pickedMode === 'td') item.tdMapId = pickedMap;
                   onAdd(item);
                 }}>
-                <Icon id="check" size={12}/> + Add to Queue
+                <Icon id="check" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
+                + ADD TO QUEUE
               </button>
-              <button className="btn sm" onClick={onAddRandom}
-                style={{ background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' }}>
-                <Icon id="sparkle" size={12}/> + Random
+              <button className="btn" onClick={onAddRandom}
+                style={{
+                  flex:1, minWidth:160, padding:'12px 18px', fontSize:16,
+                  background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428',
+                  fontFamily:"'Bebas Neue'", letterSpacing:'.08em',
+                }}>
+                <Icon id="sparkle" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
+                + RANDOM
               </button>
             </div>
-          </div>
 
-          {/* Current queue list */}
-          <div className="section-card">
-            <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-              <div className="sc-h" style={{ margin:0 }}>Up next ({queue.length})</div>
-              {queue.length > 0 && (
-                <button className="btn sm ghost" onClick={onClear}
-                  style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
-                  <Icon id="x" size={11}/> Clear all
+            {/* ===== HOST / INVITE CODE ===== */}
+            <div className="section-card" style={{
+              marginBottom:14,
+              background:'linear-gradient(90deg, rgba(255,154,60,.10), transparent 70%)',
+              border:'1.5px solid rgba(255,154,60,.35)',
+            }}>
+              <div className="row" style={{ alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                <div style={{
+                  width:42, height:42, borderRadius:8,
+                  background:'linear-gradient(140deg, var(--fire-2), var(--fire-1))',
+                  display:'grid', placeItems:'center', color:'#fff',
+                  fontFamily:"'Bebas Neue'", fontSize:22,
+                }}>H</div>
+                <div style={{ flex:1, minWidth:120 }}>
+                  <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.2em' }}>HOSTING</div>
+                  <div style={{ fontFamily:"'Bebas Neue'", fontSize:24, letterSpacing:'.15em', color:'#ffd76a' }}>
+                    {hostCode}
+                  </div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)' }}>
+                    Share with friends so they can join your queue
+                  </div>
+                </div>
+                <button className="btn sm" onClick={copyCode}>
+                  <Icon id="check" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                  Copy code
                 </button>
+              </div>
+            </div>
+
+            {/* ===== UP NEXT LIST ===== */}
+            <div className="section-card">
+              <div className="row" style={{ justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                <div className="sc-h" style={{ margin:0 }}>Up next ({queue.length})</div>
+                {queue.length > 0 && (
+                  <button className="btn sm ghost" onClick={onClear}
+                    style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                    <Icon id="x" size={11}/> Clear all
+                  </button>
+                )}
+              </div>
+              {queue.length === 0 ? (
+                <div style={{ color:'var(--ink-3)', fontSize:13, padding:'10px 0', textAlign:'center' }}>
+                  Empty for now. Add matches above — they auto-play after each result.
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {queue.map((q, i) => {
+                    const c = MODE_COLORS[q.mode] || { hue:'#5cf6ff', tag:'MATCH' };
+                    return (
+                      <div key={i} className="row" style={{
+                        gap:10, alignItems:'center', padding:'8px 10px',
+                        background:`linear-gradient(90deg, ${c.hue}18, rgba(255,255,255,.02))`,
+                        borderRadius:8,
+                        border:`1.5px solid ${c.hue}55`,
+                      }}>
+                        <div style={{
+                          width:30, height:30, borderRadius:6,
+                          background:`linear-gradient(140deg, ${c.hue}, ${c.hue}99)`,
+                          color:'#fff',
+                          display:'grid', placeItems:'center', fontWeight:800, fontSize:14,
+                        }}>{i+1}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontFamily:"'Bebas Neue'", fontSize:16, letterSpacing:'.05em' }}>
+                            {modeLabel(q.mode).toUpperCase()}
+                          </div>
+                          {tdNameFor(q.tdMapId) && (
+                            <div style={{ fontSize:11, color:c.hue }}>
+                              {tdNameFor(q.tdMapId)}
+                            </div>
+                          )}
+                        </div>
+                        <button className="btn sm ghost" onClick={() => onRemove(i)}
+                          style={{ padding:'4px 8px' }}>
+                          <Icon id="x" size={11}/>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
-            {queue.length === 0 ? (
-              <div style={{ color:'var(--ink-3)', fontSize:13, padding:'10px 0' }}>
-                Queue is empty. Add matches above — they'll auto-play after each result screen.
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                {queue.map((q, i) => (
-                  <div key={i} className="row" style={{
-                    gap:10, alignItems:'center', padding:'8px 10px',
-                    background:'rgba(255,255,255,.04)', borderRadius:6,
-                    border:'1px solid var(--line)',
-                  }}>
-                    <div style={{
-                      width:24, height:24, borderRadius:'50%',
-                      background:'rgba(92,246,255,.2)', color:'#5cf6ff',
-                      display:'grid', placeItems:'center', fontWeight:700, fontSize:13,
-                    }}>{i+1}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700 }}>{modeLabel(q.mode)}</div>
-                      {q.tdMapId && q.tdMapId !== 'random' && (
-                        <div style={{ fontSize:11, color:'var(--ink-3)' }}>
-                          {(G.TD_MAP_THEMES && G.TD_MAP_THEMES[q.tdMapId] && G.TD_MAP_THEMES[q.tdMapId].name) || q.tdMapId}
-                        </div>
-                      )}
-                    </div>
-                    <button className="btn sm ghost" onClick={() => onRemove(i)}
-                      style={{ padding:'4px 8px' }}>
-                      <Icon id="x" size={11}/>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
