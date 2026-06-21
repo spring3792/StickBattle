@@ -123,9 +123,236 @@
   }
 
   // ============== launch screen (revamped) ==============
+  // GIMKIT-STYLE HOSTING WAITING ROOM — full-screen dark panel with a HUGE
+  // game-code display, a join URL, a live "Players joined" grid (simulated
+  // by progressively spawning fake players), and a big START GAME button
+  // that pulses once at least 1 player has joined.
+  function HostingScreen({ settings, onClose, onStart }) {
+    const POOL = ['xSt1ckLord','BowKing','FrostQueen','Vexo','PixelPunch','Razer',
+      'Krang','MintCake','NeonRaven','BoomGuy','ChessMonk','Yeet','PingPong','Apex22','Lunar'];
+    const PALETTE = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#fff'];
+    const [joined, setJoined] = useState([]);
+    const [muted, setMuted] = useState(false);
+    const hostCode = React.useMemo(() => {
+      try {
+        let c = localStorage.getItem('sf_host_code_v1');
+        if (!c) {
+          c = '';
+          const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          const u = D.getUser();
+          for (let i = 0; i < 6; i++) c += ch[Math.floor((u.charCodeAt(i % u.length) + i * 7) % ch.length)];
+          localStorage.setItem('sf_host_code_v1', c);
+        }
+        return c;
+      } catch(e) { return 'HOST01'; }
+    }, []);
+    // Simulate players trickling in every 1.5–3 seconds, max 3.
+    useEffect(() => {
+      if (joined.length >= 3) return;
+      const wait = 1500 + Math.floor(Math.random() * 1600);
+      const t = setTimeout(() => {
+        const name = POOL[Math.floor(Math.random() * POOL.length)];
+        const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        setJoined(prev => prev.concat([{
+          id: `joined-${prev.length}-${name}`, name, color,
+        }]));
+      }, wait);
+      return () => clearTimeout(t);
+    }, [joined.length]);
+    function copyCode() {
+      try { navigator.clipboard && navigator.clipboard.writeText(hostCode); } catch(e){}
+    }
+    function kick(id) {
+      setJoined(prev => prev.filter(p => p.id !== id));
+    }
+    const canStart = joined.length >= 1;
+    return (
+      <div style={{
+        position:'fixed', inset:0, zIndex:130,
+        background:'radial-gradient(ellipse at 50% 30%, rgba(124,92,255,.18), rgba(8,4,18,.96) 70%), #0a0e22',
+        display:'flex', flexDirection:'column', overflowY:'auto', padding:'24px 18px',
+      }}>
+        {/* Top bar — close button */}
+        <div className="row" style={{ justifyContent:'space-between', alignItems:'center', maxWidth:1100, width:'100%', margin:'0 auto 18px' }}>
+          <button className="btn sm ghost" onClick={onClose}>
+            <Icon id="back" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
+            Back to hub
+          </button>
+          <div className="row" style={{ gap:8 }}>
+            <button className="btn sm ghost" onClick={() => setMuted(m => !m)}>
+              <Icon id={muted ? 'x' : 'check'} size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+              {muted ? 'Lobby muted' : 'Sounds on'}
+            </button>
+          </div>
+        </div>
+
+        {/* HUGE CODE PANEL */}
+        <div style={{ maxWidth:1100, width:'100%', margin:'0 auto', textAlign:'center' }}>
+          <div style={{ fontSize:12, color:'#5cf6ff', letterSpacing:'.32em', fontWeight:800, marginBottom:8 }}>
+            ▸ LIVE HOSTING SESSION
+          </div>
+          <div style={{ fontSize:11, letterSpacing:'.22em', color:'var(--ink-3)', marginBottom:4 }}>
+            JOIN AT
+          </div>
+          <div style={{
+            fontFamily:"'Bebas Neue'", fontSize:'clamp(20px, 3vw, 32px)',
+            color:'#fff', letterSpacing:'.05em', marginBottom:16,
+          }}>
+            spring3792.github.io/StickBattle
+          </div>
+          <div style={{ fontSize:11, letterSpacing:'.22em', color:'var(--ink-3)', marginBottom:6 }}>
+            WITH CODE
+          </div>
+          <div style={{
+            display:'inline-flex', gap:8, padding:'12px 22px', alignItems:'center',
+            background:'#fff',
+            borderRadius:14,
+            boxShadow:'0 12px 60px rgba(255,215,106,.45), inset 0 -6px 0 rgba(0,0,0,.18)',
+          }}>
+            {hostCode.split('').map((ch, i) => (
+              <span key={i} style={{
+                fontFamily:"'Bebas Neue'",
+                fontSize:'clamp(56px, 11vw, 120px)',
+                lineHeight:.9,
+                color:'#1a0e22',
+                letterSpacing:'.04em',
+                fontWeight:900,
+              }}>{ch}</span>
+            ))}
+          </div>
+          <div className="row" style={{ justifyContent:'center', gap:10, marginTop:14 }}>
+            <button className="btn" onClick={copyCode}
+              style={{
+                background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428',
+                fontFamily:"'Bebas Neue'", letterSpacing:'.1em', padding:'10px 22px', fontSize:16,
+              }}>
+              <Icon id="check" size={14} style={{verticalAlign:'middle', marginRight:6}}/>
+              COPY CODE
+            </button>
+          </div>
+        </div>
+
+        {/* PLAYER COUNT + START BUTTON */}
+        <div className="row" style={{
+          maxWidth:1100, width:'100%', margin:'30px auto 14px',
+          alignItems:'center', gap:14, flexWrap:'wrap',
+        }}>
+          <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ fontSize:11, letterSpacing:'.22em', color:'var(--ink-3)' }}>
+              PLAYERS JOINED
+            </div>
+            <div className="row" style={{ alignItems:'baseline', gap:8 }}>
+              <div style={{
+                fontFamily:"'Bebas Neue'", fontSize:64, lineHeight:1,
+                color:'#5bff8a', textShadow:'0 0 16px rgba(91,255,138,.5)',
+              }}>{joined.length}</div>
+              <div style={{
+                fontFamily:"'Bebas Neue'", fontSize:28, color:'var(--ink-3)', letterSpacing:'.1em',
+              }}>/ 3 IN LOBBY</div>
+            </div>
+          </div>
+          <button className="btn big" onClick={() => onStart(joined)} disabled={!canStart}
+            style={{
+              padding:'18px 36px', fontSize:24, fontFamily:"'Bebas Neue'", letterSpacing:'.12em',
+              background: canStart
+                ? 'linear-gradient(180deg, #5bff8a, #2a9a4a)'
+                : 'rgba(255,255,255,.06)',
+              color: canStart ? '#001428' : 'var(--ink-3)',
+              boxShadow: canStart ? '0 8px 32px rgba(91,255,138,.5)' : 'none',
+              cursor: canStart ? 'pointer' : 'not-allowed',
+              animation: canStart ? 'startPulse 1.2s ease-in-out infinite' : 'none',
+            }}>
+            <Icon id="play" size={22} style={{verticalAlign:'middle', marginRight:8}}/>
+            {canStart ? 'START GAME' : 'WAITING FOR PLAYERS…'}
+          </button>
+          <style>{`@keyframes startPulse {
+            0%,100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+          }`}</style>
+        </div>
+
+        {/* JOINED-PLAYER GRID — Gimkit-style avatar tiles */}
+        <div style={{
+          maxWidth:1100, width:'100%', margin:'0 auto',
+          display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))',
+          gap:12,
+        }}>
+          {/* Host always shown first */}
+          <div style={{
+            padding:'14px 12px', borderRadius:14, textAlign:'center',
+            background:'linear-gradient(180deg, rgba(255,215,106,.18), rgba(255,154,60,.06))',
+            border:'2px solid #ffd76a',
+            boxShadow:'0 6px 24px rgba(255,215,106,.25)',
+          }}>
+            <div style={{
+              width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
+              background:`linear-gradient(135deg, ${D.getPlayerColor(D.getUser()) || '#ffd76a'}, ${mixToBlack(D.getPlayerColor(D.getUser()) || '#ffd76a', .4)})`,
+              display:'grid', placeItems:'center', color:'#fff', fontFamily:"'Bebas Neue'", fontSize:32,
+              border:'3px solid rgba(255,255,255,.4)',
+              boxShadow:'0 4px 14px rgba(0,0,0,.5)',
+            }}>{(D.getDisplayName(D.getUser()) || 'H').slice(0,1).toUpperCase()}</div>
+            <div style={{ fontWeight:800, fontSize:14, color:'#fff' }}>{D.getDisplayName(D.getUser())}</div>
+            <div style={{ fontSize:10, letterSpacing:'.16em', color:'#ffd76a', marginTop:2 }}>HOST</div>
+          </div>
+          {joined.map(p => (
+            <div key={p.id} style={{
+              padding:'14px 12px', borderRadius:14, textAlign:'center',
+              background:'linear-gradient(180deg, rgba(91,255,138,.14), rgba(91,255,138,.03))',
+              border:'2px solid #5bff8a',
+              animation:'joinPop .4s ease-out',
+              position:'relative',
+            }}>
+              <div style={{
+                width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
+                background:`linear-gradient(135deg, ${p.color}, ${mixToBlack(p.color, .4)})`,
+                display:'grid', placeItems:'center', color:'#fff', fontFamily:"'Bebas Neue'", fontSize:32,
+                border:'3px solid rgba(255,255,255,.4)',
+                boxShadow:'0 4px 14px rgba(0,0,0,.5)',
+              }}>{p.name.slice(0,1).toUpperCase()}</div>
+              <div style={{ fontWeight:800, fontSize:14, color:'#fff',
+                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</div>
+              <div style={{ fontSize:10, letterSpacing:'.16em', color:'#5bff8a', marginTop:2 }}>JOINED</div>
+              <button onClick={() => kick(p.id)}
+                title="Kick player"
+                style={{
+                  position:'absolute', top:6, right:6,
+                  width:22, height:22, borderRadius:'50%',
+                  background:'rgba(255,91,110,.7)', color:'#fff',
+                  border:'none', cursor:'pointer', fontSize:12, fontWeight:900,
+                  display:'grid', placeItems:'center',
+                }}>×</button>
+            </div>
+          ))}
+          {/* Pending slot animation while we still have room */}
+          {joined.length < 3 && (
+            <div style={{
+              padding:'14px 12px', borderRadius:14, textAlign:'center',
+              background:'rgba(255,255,255,.02)',
+              border:'2px dashed rgba(255,255,255,.15)',
+              color:'var(--ink-3)',
+              display:'grid', alignContent:'center', minHeight:130,
+            }}>
+              <div style={{
+                width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
+                background:'rgba(255,255,255,.04)', display:'grid', placeItems:'center',
+                fontSize:30, color:'var(--ink-3)',
+                animation:'dotsPulse 1.6s ease-in-out infinite',
+              }}>•••</div>
+              <div style={{ fontSize:11, letterSpacing:'.16em' }}>WAITING…</div>
+            </div>
+          )}
+          <style>{`
+            @keyframes joinPop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+            @keyframes dotsPulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
+
   // Simple Host + Join row. Local mode: shows tiny inline "Lobby code" so
   // friends can still pop in. Online mode: prominent gold-bordered card.
-  function HostJoinCard({ playMode, party }) {
+  function HostJoinCard({ playMode, party, onOpenHostingScreen }) {
     const [joinCode, setJoinCode] = useState('');
     const [showJoined, setShowJoined] = useState(null);
     // Hosting toggle — persists across reloads so the host stays "live" until
@@ -137,8 +364,12 @@
       const next = !hosting;
       setHosting(next);
       try { localStorage.setItem('sf_hosting_v1', next ? '1' : '0'); } catch(e){}
+      if (next && onOpenHostingScreen) onOpenHostingScreen();
       setShowJoined(next ? 'Hosting started! Share your code.' : 'Stopped hosting');
       setTimeout(() => setShowJoined(null), 1600);
+    }
+    function openHostingScreen() {
+      if (onOpenHostingScreen) onOpenHostingScreen();
     }
     const hostCode = React.useMemo(() => {
       try {
@@ -195,6 +426,11 @@
                   {hostCode}
                 </div>
               </div>
+              <button className="btn sm" onClick={openHostingScreen}
+                style={{ background:'linear-gradient(180deg, #5bff8a, #2a9a4a)', color:'#001428' }}>
+                <Icon id="play" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                View Lobby
+              </button>
               <button className="btn sm" onClick={copyCode}>
                 <Icon id="check" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
                 Copy
@@ -366,7 +602,7 @@
   }
 
   function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins,
-    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge }) {
+    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen }) {
     const title = D.eduTitle(settings.edu);
     const sub = D.eduSub(settings.edu);
     const allSets = Q.allSets();
@@ -393,6 +629,7 @@
           onQuickMatch={onQuickMatch}
           party={party} onClearParty={onClearParty}
           challengeFriend={challengeFriend} onClearChallenge={onClearChallenge}
+          onOpenHostingScreen={onOpenHostingScreen}
           onOpenTrade={onOpenTrade} onPreviewSet={onPreviewSet} />
       </div>
     );
@@ -403,7 +640,7 @@
     readyModes, soonModes, allSets, activeSet,
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
     onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet,
-    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge }) {
+    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen }) {
     // Chip helper — icon only on narrow, icon+label otherwise
     const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
@@ -537,7 +774,7 @@
         )}
 
         {/* SIMPLE HOST/JOIN CARD — always visible, more prominent in online mode */}
-        <HostJoinCard playMode={playMode} party={party} />
+        <HostJoinCard playMode={playMode} party={party} onOpenHostingScreen={onOpenHostingScreen} />
 
         {/* ONLINE-MODE BIG LOBBY CARD — replaces the hero strip when in online */}
         {playMode === 'online' ? (
@@ -2201,6 +2438,9 @@
     const [showFriends, setShowFriends] = useState(false);
     const [showProfile, setShowProfile] = useState(false);
     const [showQueue, setShowQueue] = useState(false);
+    // Gimkit-style hosting waiting room — full screen with a big PIN, live
+    // joined-players list, and a START GAME button.
+    const [showHostingScreen, setShowHostingScreen] = useState(false);
     // Play queue — ordered list of {mode, tdMapId} entries the player wants to
     // play one after another. When a match ends and the queue is non-empty,
     // the next entry auto-starts.
@@ -2458,6 +2698,7 @@
             coins={coins}
             onOpenProfile={() => setShowProfile(true)}
             onOpenQueue={() => setShowQueue(true)}
+            onOpenHostingScreen={() => setShowHostingScreen(true)}
             queueCount={playQueue.length}
             playMode={playMode}
             onChangePlayMode={changePlayMode}
@@ -2635,6 +2876,22 @@
         {showCrates && (
           <CrateModal onClose={() => { setShowCrates(false); refreshCoins(); }}
                       onCoinsChanged={refreshCoins} />
+        )}
+        {showHostingScreen && (
+          <HostingScreen
+            settings={settings}
+            onClose={() => setShowHostingScreen(false)}
+            onStart={(joinedPlayers) => {
+              // Slot the simulated joined players into the party so the lobby
+              // builds them as friendly slots — the host plays alongside them.
+              setParty(joinedPlayers);
+              setShowHostingScreen(false);
+              // Bump player count to fit (host + joined).
+              const total = Math.max(2, Math.min(4, joinedPlayers.length + 1));
+              setSettings({ ...settings, players: String(total) });
+              setTimeout(() => startLobby(), 60);
+            }}
+          />
         )}
         {showQueue && (
           <QueueModal
