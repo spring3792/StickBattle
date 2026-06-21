@@ -1025,14 +1025,156 @@
     );
   }
 
+  // Tap-the-target arcade — fills the dead time in the lobby. Targets pop in
+  // random spots and you have ~1.4s to click each. Combo counter + best score.
+  function LobbyMiniGame({ profiles }) {
+    const [target, setTarget] = useState(null); // { x, y, born }
+    const [score, setScore] = useState(0);
+    const [best, setBest] = useState(() => {
+      try { return parseInt(localStorage.getItem('sf_lobby_best_v1') || '0', 10); } catch(e){ return 0; }
+    });
+    const [running, setRunning] = useState(false);
+    const [missed, setMissed] = useState(false);
+    const areaRef = useRef(null);
+    useEffect(() => {
+      if (!running) return;
+      let raf;
+      function spawn() {
+        const r = areaRef.current && areaRef.current.getBoundingClientRect();
+        if (!r) return;
+        const pad = 30;
+        const x = pad + Math.random() * (r.width - pad*2);
+        const y = pad + Math.random() * (r.height - pad*2);
+        setTarget({ x, y, born: Date.now() });
+      }
+      spawn();
+      function tick() {
+        if (!running) return;
+        if (target && Date.now() - target.born > 1400) {
+          // miss
+          setRunning(false);
+          setMissed(true);
+          if (score > best) {
+            setBest(score);
+            try { localStorage.setItem('sf_lobby_best_v1', String(score)); } catch(e){}
+          }
+          return;
+        }
+        raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [running, target, score, best]);
+    function start() { setScore(0); setMissed(false); setRunning(true); }
+    function tapTarget(e) {
+      e.stopPropagation();
+      setScore(s => s + 1);
+      // Respawn immediately with new spot.
+      const r = areaRef.current && areaRef.current.getBoundingClientRect();
+      const pad = 30;
+      setTarget({
+        x: pad + Math.random() * ((r ? r.width : 300) - pad*2),
+        y: pad + Math.random() * ((r ? r.height : 160) - pad*2),
+        born: Date.now(),
+      });
+    }
+    return (
+      <div className="panel" style={{
+        maxWidth: 1280, margin:'0 auto', width:'100%',
+        padding:'12px 14px',
+        background:'linear-gradient(90deg, rgba(124,92,255,.10), transparent 70%)',
+        border:'1.5px solid rgba(124,92,255,.35)',
+      }}>
+        <div className="row" style={{ alignItems:'center', gap:12, marginBottom:8, flexWrap:'wrap' }}>
+          <div style={{ fontFamily:"'Bebas Neue'", fontSize:20, letterSpacing:'.1em', color:'#a07bff' }}>
+            ▸ WARM-UP · TAP THE TARGET
+          </div>
+          <div style={{ flex:1 }}/>
+          <div style={{ fontSize:11, color:'var(--ink-3)' }}>
+            SCORE <strong style={{ color:'#fff', fontSize:14 }}>{score}</strong> · BEST <strong style={{ color:'#ffd76a', fontSize:14 }}>{best}</strong>
+          </div>
+          {!running ? (
+            <button className="btn sm" onClick={start}
+              style={{ background:'linear-gradient(180deg, #7c5cff, #5b3ed8)', color:'#fff' }}>
+              <Icon id="play" size={12}/> {missed ? 'Retry' : 'Start'}
+            </button>
+          ) : (
+            <button className="btn sm ghost" onClick={() => { setRunning(false); setTarget(null); }}>
+              <Icon id="x" size={11}/> Stop
+            </button>
+          )}
+        </div>
+        <div ref={areaRef}
+          style={{
+            position:'relative', height:160, width:'100%',
+            borderRadius:10, overflow:'hidden',
+            background:'radial-gradient(circle at 50% 60%, rgba(124,92,255,.15), rgba(8,4,18,.5))',
+            border:'1.5px dashed rgba(124,92,255,.4)',
+            cursor: running ? 'crosshair' : 'default',
+          }}>
+          {!running && (
+            <div style={{
+              position:'absolute', inset:0, display:'grid', placeItems:'center',
+              color:'var(--ink-3)', fontSize:13, textAlign:'center', padding:14,
+            }}>
+              {missed ? `Missed! Final score: ${score}. Hit Retry.` : 'Tap Start to warm up while you wait for players to ready up.'}
+            </div>
+          )}
+          {running && target && (
+            <button onClick={tapTarget}
+              style={{
+                position:'absolute', left: target.x - 22, top: target.y - 22,
+                width:44, height:44, borderRadius:'50%', cursor:'crosshair',
+                background:'radial-gradient(circle at 30% 25%, #fff 0%, #ff5b6e 50%, #a01a2a 100%)',
+                border:'3px solid #fff', boxShadow:'0 0 16px #ff5b6e88',
+                animation:'tgtPulse .5s ease-in-out infinite alternate',
+              }}>
+              <style>{`@keyframes tgtPulse { from { transform: scale(.94); } to { transform: scale(1.05); } }`}</style>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ============== lobby ==============
   function Lobby({ profiles, onChange, onStart, onBack }) {
     const cols = Math.min(profiles.length, 4);
+    const total = profiles.length;
+    const human = profiles.find(p => !p.isBot);
+    const youName = human ? human.name : 'Host';
     return (
       <div className="center" style={{ padding:18, gap:12, zIndex:2, alignItems:'stretch', justifyContent:'flex-start', paddingTop:30 }}>
         <div style={{ textAlign:'center' }}>
           <div className="title-art" style={{ fontSize:'clamp(40px,7vw,80px)' }}>READY UP</div>
           <div className="title-sub">name · color · hat · outfit · face · trail</div>
+        </div>
+        {/* PLAYERS-JOINED BANNER + HOST badge — everyone sees the count */}
+        <div className="panel" style={{
+          maxWidth: 1280, margin:'0 auto', width:'100%',
+          padding:'12px 18px', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap',
+          background:'linear-gradient(90deg, rgba(91,255,138,.10), rgba(92,246,255,.08) 70%)',
+          border:'2px solid rgba(91,255,138,.4)',
+        }}>
+          <span style={{
+            width:11, height:11, borderRadius:'50%', background:'#5bff8a',
+            boxShadow:'0 0 10px #5bff8a',
+          }}/>
+          <div style={{ fontFamily:"'Bebas Neue'", fontSize:24, letterSpacing:'.1em', color:'#5bff8a' }}>
+            {total} / 4 PLAYERS JOINED
+          </div>
+          <div style={{ flex:1 }}/>
+          <span className="pill" style={{
+            background:'linear-gradient(180deg, #ffd76a, #ff9a3c)', color:'#1a0e22',
+            border:'none', fontWeight:800, padding:'4px 10px',
+          }}>
+            HOST · {youName}
+          </span>
+        </div>
+        {/* MINI-GAME while waiting — tap-the-target solo arcade */}
+        <LobbyMiniGame profiles={profiles} />
+        <div style={{ textAlign:'center', fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em', marginTop:2 }}>
+          CUSTOMIZE WHILE WAITING
         </div>
         <div className="grid" style={{ gridTemplateColumns:`repeat(${cols}, minmax(260px, 1fr))`, maxWidth: 1280, margin:'0 auto', gap:14 }}>
           {profiles.map((p, i) => (

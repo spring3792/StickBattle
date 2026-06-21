@@ -4102,11 +4102,15 @@ window.StickFightGame = (function () {
     // fixed-position upgrade/sell panel pinned to the top-right of the canvas.
     if (td.selectedTower) {
       const t = td.selectedTower;
-      // Range circle on the map
+      // Range circle on the map — centered on the VISUAL stickman (which sits
+      // ~10px above t.y because drawTowerStickman positions the ground tile at
+      // t.y+12 and the head at t.y-26). The targeting code still uses (t.x,t.y)
+      // so the ring shifts cosmetically only.
+      const ringY = t.y - 10;
       ctx.fillStyle = 'rgba(91,255,138,.05)';
-      ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(t.x, ringY, t.range, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(t.x, ringY, t.range, 0, Math.PI*2); ctx.stroke();
       // Pulsing selection ring around the tower itself
       const pulse = (Math.sin(state.frame * 0.18) + 1) * 0.5;
       ctx.strokeStyle = `rgba(91,255,138,${0.6 + pulse * 0.4})`;
@@ -4251,11 +4255,12 @@ window.StickFightGame = (function () {
         if (Math.hypot(t.x - m.x, t.y - m.y) < 22) { hoverT = t; break; }
       }
       if (hoverT) {
+        const hRingY = hoverT.y - 10;
         ctx.fillStyle = 'rgba(255,215,106,.06)';
-        ctx.beginPath(); ctx.arc(hoverT.x, hoverT.y, hoverT.range, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hoverT.x, hRingY, hoverT.range, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(255,215,106,.8)'; ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
-        ctx.beginPath(); ctx.arc(hoverT.x, hoverT.y, hoverT.range, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hoverT.x, hRingY, hoverT.range, 0, Math.PI*2); ctx.stroke();
         ctx.setLineDash([]);
       } else {
         const ok = td.gold >= selKind.cost &&
