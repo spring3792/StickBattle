@@ -510,7 +510,13 @@
     // Hosting toggle — persists across reloads so the host stays "live" until
     // they explicitly stop. When false, the code is hidden and only Join shows.
     const [hosting, setHosting] = useState(() => {
-      try { return localStorage.getItem('sf_hosting_v1') === '1'; } catch(e) { return false; }
+      // Default to TRUE — you "start with a lobby" so the code is immediately
+      // shareable without needing to press HOST GAME first. Persists the
+      // user's last explicit choice.
+      try {
+        const v = localStorage.getItem('sf_hosting_v1');
+        return v === null ? true : v === '1';
+      } catch(e) { return true; }
     });
     function toggleHost() {
       const next = !hosting;
@@ -1458,10 +1464,230 @@
     );
   }
 
-  // REACTION BLITZ — a real challenge. Targets shrink as score climbs, the
-  // spawn window gets shorter, RED decoys mix in (clicking one costs a life),
-  // and three lives is all you get. Combo multiplier rewards streaks.
+  // STICK DASH — endless runner. Click anywhere (or press SPACE) to jump.
+  // Stickman scrolls left-to-right at increasing speed; spikes spawn from the
+  // right edge. Hit one → game over. Score = distance survived. Double-jump
+  // available. Easy to learn, hard to master.
   function LobbyMiniGame({ profiles }) {
+    const canvasRef = useRef(null);
+    const [running, setRunning] = useState(false);
+    const [score, setScore] = useState(0);
+    const [best, setBest] = useState(() => {
+      try { return parseInt(localStorage.getItem('sf_dash_best_v1') || '0', 10); } catch(e){ return 0; }
+    });
+    const [over, setOver] = useState(false);
+    const stateRef = useRef(null);
+    function start() {
+      setScore(0); setOver(false); setRunning(true);
+      stateRef.current = {
+        y: 0,                  // height above ground (px)
+        vy: 0,
+        jumpsUsed: 0,
+        obstacles: [],         // { x, w, h, type }
+        spawnTimer: 0,
+        speed: 4.5,
+        dist: 0,
+      };
+    }
+    function jump() {
+      const s = stateRef.current;
+      if (!s) return;
+      if (s.jumpsUsed >= 2) return;
+      s.vy = -10;
+      s.jumpsUsed += 1;
+    }
+    useEffect(() => {
+      if (!running) return;
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const ctx = cv.getContext('2d');
+      // Match the canvas backing store to its CSS pixel size.
+      function resize() {
+        const r = cv.getBoundingClientRect();
+        cv.width = Math.round(r.width);
+        cv.height = Math.round(r.height);
+      }
+      resize();
+      window.addEventListener('resize', resize);
+      let raf;
+      const GY = 165;           // ground y
+      const RUN_X = 80;         // stickman fixed x
+      function frame() {
+        if (!running) return;
+        const s = stateRef.current;
+        if (!s) { raf = requestAnimationFrame(frame); return; }
+        const W = cv.width, H = cv.height;
+        // ---- update ----
+        s.dist += s.speed;
+        s.speed = Math.min(11, 4.5 + s.dist * 0.0008);
+        s.vy += 0.55; // gravity
+        s.y += s.vy;
+        if (s.y >= 0) { s.y = 0; s.vy = 0; s.jumpsUsed = 0; }
+        s.spawnTimer -= 1;
+        if (s.spawnTimer <= 0) {
+          // Mix of spike triangles and tall boxes.
+          const tall = Math.random() < 0.3;
+          s.obstacles.push({
+            x: W + 30,
+            w: tall ? 22 : 26,
+            h: tall ? 46 : 28,
+            type: tall ? 'box' : 'spike',
+          });
+          s.spawnTimer = Math.max(36, 90 - Math.floor(s.dist * 0.01));
+        }
+        for (const o of s.obstacles) o.x -= s.speed;
+        s.obstacles = s.obstacles.filter(o => o.x + o.w > -10);
+        // ---- collision ----
+        const px = RUN_X, py = GY + s.y - 26, pw = 14, ph = 26;
+        for (const o of s.obstacles) {
+          const ox = o.x, oy = GY - o.h, ow = o.w, oh = o.h;
+          if (px < ox + ow && px + pw > ox && py < oy + oh && py + ph > oy) {
+            setRunning(false);
+            setOver(true);
+            const finalScore = Math.floor(s.dist / 6);
+            setScore(finalScore);
+            if (finalScore > best) {
+              setBest(finalScore);
+              try { localStorage.setItem('sf_dash_best_v1', String(finalScore)); } catch(e){}
+            }
+            return;
+          }
+        }
+        // ---- draw ----
+        ctx.clearRect(0, 0, W, H);
+        // sky gradient
+        const sky = ctx.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, 'rgba(124,92,255,.18)');
+        sky.addColorStop(1, 'rgba(8,4,18,.6)');
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+        // ground line
+        ctx.strokeStyle = '#a07bff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, GY); ctx.lineTo(W, GY); ctx.stroke();
+        // ground hash marks scrolling
+        ctx.strokeStyle = 'rgba(160,123,255,.4)'; ctx.lineWidth = 1;
+        const off = (-s.dist) % 30;
+        for (let x = off; x < W; x += 30) {
+          ctx.beginPath(); ctx.moveTo(x, GY + 4); ctx.lineTo(x + 8, GY + 4); ctx.stroke();
+        }
+        // obstacles
+        for (const o of s.obstacles) {
+          if (o.type === 'box') {
+            const g = ctx.createLinearGradient(o.x, GY - o.h, o.x, GY);
+            g.addColorStop(0, '#5cf6ff');
+            g.addColorStop(1, '#2a7bff');
+            ctx.fillStyle = g;
+            ctx.fillRect(o.x, GY - o.h, o.w, o.h);
+            ctx.strokeStyle = '#001428'; ctx.lineWidth = 1.5;
+            ctx.strokeRect(o.x, GY - o.h, o.w, o.h);
+          } else {
+            // spike triangle
+            ctx.fillStyle = '#ff5b6e';
+            ctx.beginPath();
+            ctx.moveTo(o.x, GY);
+            ctx.lineTo(o.x + o.w / 2, GY - o.h);
+            ctx.lineTo(o.x + o.w, GY);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#5a0a1a'; ctx.lineWidth = 1.5; ctx.stroke();
+          }
+        }
+        // stickman — runs at fixed x, hops with s.y
+        const cx = RUN_X + pw/2, gy = GY + s.y;
+        ctx.lineCap = 'round';
+        // body
+        ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(cx, gy - 18); ctx.lineTo(cx, gy - 4); ctx.stroke();
+        // legs — animate with distance
+        const run = (s.dist * 0.18) % (Math.PI * 2);
+        const legSwing = Math.sin(run) * 6;
+        ctx.beginPath();
+        ctx.moveTo(cx, gy - 4); ctx.lineTo(cx - 4 + legSwing, gy);
+        ctx.moveTo(cx, gy - 4); ctx.lineTo(cx + 4 - legSwing, gy);
+        ctx.stroke();
+        // arms swing opposite
+        ctx.beginPath();
+        ctx.moveTo(cx, gy - 14); ctx.lineTo(cx - 5 - legSwing*0.6, gy - 8);
+        ctx.moveTo(cx, gy - 14); ctx.lineTo(cx + 5 + legSwing*0.6, gy - 8);
+        ctx.stroke();
+        // head
+        ctx.fillStyle = '#ffd76a';
+        ctx.beginPath(); ctx.arc(cx, gy - 22, 4.5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#1a1a22'; ctx.lineWidth = 1; ctx.stroke();
+        // eyes
+        ctx.fillStyle = '#1a1a22';
+        ctx.beginPath(); ctx.arc(cx + 1.4, gy - 22.5, 0.7, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 3, gy - 22.5, 0.7, 0, Math.PI*2); ctx.fill();
+        // live score
+        ctx.fillStyle = '#fff';
+        ctx.font = "700 18px 'Bebas Neue'";
+        ctx.textAlign = 'right';
+        ctx.fillText(`${Math.floor(s.dist / 6)}`, W - 12, 24);
+        raf = requestAnimationFrame(frame);
+      }
+      raf = requestAnimationFrame(frame);
+      // input
+      function onKey(ev) { if (ev.code === 'Space') { ev.preventDefault(); jump(); } }
+      window.addEventListener('keydown', onKey);
+      return () => {
+        if (raf) cancelAnimationFrame(raf);
+        window.removeEventListener('keydown', onKey);
+        window.removeEventListener('resize', resize);
+      };
+    }, [running, best]);
+    return (
+      <div className="panel" style={{
+        maxWidth: 1280, margin:'0 auto', width:'100%',
+        padding:'12px 14px',
+        background:'linear-gradient(90deg, rgba(124,92,255,.10), transparent 70%)',
+        border:'1.5px solid rgba(124,92,255,.35)',
+      }}>
+        <div className="row" style={{ alignItems:'center', gap:12, marginBottom:8, flexWrap:'wrap' }}>
+          <div style={{ fontFamily:"'Bebas Neue'", fontSize:20, letterSpacing:'.1em', color:'#a07bff' }}>
+            ▸ WARM-UP · STICK DASH
+          </div>
+          <div style={{ flex:1 }}/>
+          <div style={{ fontSize:11, color:'var(--ink-3)' }}>
+            SCORE <strong style={{ color:'#fff', fontSize:14 }}>{score}</strong>
+            {' · '}BEST <strong style={{ color:'#ffd76a', fontSize:14 }}>{best}</strong>
+          </div>
+          {!running ? (
+            <button className="btn sm" onClick={start}
+              style={{ background:'linear-gradient(180deg, #7c5cff, #5b3ed8)', color:'#fff' }}>
+              <Icon id="play" size={12}/> {over ? 'Retry' : 'Start'}
+            </button>
+          ) : (
+            <button className="btn sm ghost" onClick={() => { setRunning(false); }}>
+              <Icon id="x" size={11}/> Stop
+            </button>
+          )}
+        </div>
+        <div onClick={jump}
+          style={{
+            position:'relative', width:'100%', height:200, borderRadius:10, overflow:'hidden',
+            border:'1.5px dashed rgba(124,92,255,.4)',
+            cursor: running ? 'pointer' : 'default',
+          }}>
+          <canvas ref={canvasRef}
+            style={{ width:'100%', height:'100%', display:'block', background:'#0e0820' }}/>
+          {!running && (
+            <div style={{
+              position:'absolute', inset:0, display:'grid', placeItems:'center',
+              color:'#fff', fontSize:14, textAlign:'center', padding:14,
+              background:'rgba(8,4,18,.55)',
+            }}>
+              {over
+                ? `Game over! Score ${score}${score >= best ? ' — NEW BEST!' : ''}. Hit Retry.`
+                : <span><strong>Click or press SPACE to jump.</strong> Avoid the spikes and walls. You get a double-jump.</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // OLD: REACTION BLITZ — kept in source for reference, no longer wired up.
+  function _LegacyReactionBlitz({ profiles }) {
     const [score, setScore] = useState(0);
     const [combo, setCombo] = useState(0);
     const [lives, setLives] = useState(3);
