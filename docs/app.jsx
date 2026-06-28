@@ -2395,13 +2395,17 @@
     }, [stageId]);
     const modeLabel = (D.MODES.find(m => m.id === mode) || {}).name || 'Stick Fight';
     const mapPicked = tdMapId && tdMapId !== 'random' ? tdMapId : null;
+    // Defensive: skip the frame if profiles haven't arrived yet (e.g., during
+    // the host-start transition where setProfiles + setStage('arena') race).
+    if (!profiles || profiles.length === 0) return null;
+    const target = (profiles[0] && profiles[0]._target) || 5;
     return (
       <div className="center" style={{ padding:14 }}>
         <G.Component players={profiles} stage={stage} edu={edu} mode={mode}
           botDifficulty={botDifficulty} tdEndless={tdEndless} tdMapId={mapPicked}
           paused={paused} onRoundEnd={onRoundEnd} />
         <div style={{ marginTop: 10, fontSize:12, color:'var(--ink-3)', letterSpacing:'.1em', textTransform:'uppercase' }}>
-          {modeLabel} · {stage.name} · First to {profiles[0]._target || 5}
+          {modeLabel} · {stage.name} · First to {target}
         </div>
       </div>
     );
@@ -3204,6 +3208,14 @@
       setStage('lobby');
       // Challenge is one-shot — consume after wiring into the lobby.
       if (chall) setChallengeFriend(null);
+      return built; // expose for callers that want to skip the lobby step
+    }
+    // Build profiles + drop straight to the arena (used by hosting screen).
+    function _buildAndStartArena() {
+      const built = _buildLobby();
+      if (!built || built.length === 0) return;
+      setProfiles(built.map(p => ({ ...p, _score: 0, buffs: [] })));
+      setStage('arena');
     }
 
     function startMatch() {
@@ -3531,16 +3543,18 @@
             onOpenProfile={() => setShowProfile(true)}
             onClose={() => setShowHostingScreen(false)}
             onStart={(joinedPlayers, role) => {
-              // Joined players slot into the party — they appear in friendly slots.
+              // Single-click flow: Start Game in the hosting screen now drops
+              // straight into the arena (no second "Fight" tap in a lobby).
+              // The customize panel inside the hosting screen already covers
+              // look + party + mode + question-set picking.
               setParty(joinedPlayers);
               setShowHostingScreen(false);
-              // Total = joined + (1 if host plays). Engine caps at 4 so any
-              // extra joined players sit out the visible round.
               const total = Math.max(2, Math.min(4, joinedPlayers.length + (role === 'spectator' ? 0 : 1)));
               setSettings({ ...settings, players: String(total) });
-              // Spectator mode — flag so _buildLobby can lock slot 0 as a bot.
               try { localStorage.setItem('sf_spectator_v1', role === 'spectator' ? '1' : '0'); } catch(e){}
-              setTimeout(() => startLobby(), 60);
+              // Build profiles AND set stage='arena' atomically so the Arena
+              // never mounts with an empty profiles array (which crashed it).
+              setTimeout(() => _buildAndStartArena(), 40);
             }}
           />
         )}
