@@ -142,6 +142,9 @@
     const PALETTE = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#fff'];
     const [joined, setJoined] = useState([]);
     const [muted, setMuted] = useState(false);
+    // Host role — 'player' = host plays in slot 0, 'spectator' = host watches
+    // and lets the joined players + bots fight it out.
+    const [hostRole, setHostRole] = useState('player');
     const hostCode = React.useMemo(() => {
       try {
         let c = localStorage.getItem('sf_host_code_v1');
@@ -158,7 +161,7 @@
     // No auto-spawn — lobby starts empty. Host either invites friends or
     // adds bots manually. Match makes it clear who's joining and why.
     function addBot() {
-      if (joined.length >= 3) return;
+      // No cap — host can fill the lobby with as many bots as they want.
       const taken = new Set(joined.map(p => p.name));
       const pool = POOL.filter(n => !taken.has(n));
       const name = pool.length ? pool[Math.floor(Math.random() * pool.length)] : `Bot${joined.length + 1}`;
@@ -316,33 +319,57 @@
         }}>
           <div style={{ flex:1, minWidth:200 }}>
             <div style={{ fontSize:11, letterSpacing:'.22em', color:'var(--ink-3)' }}>
-              PLAYERS JOINED
+              PLAYERS IN LOBBY
             </div>
             <div className="row" style={{ alignItems:'baseline', gap:8 }}>
               <div style={{
                 fontFamily:"'Bebas Neue'", fontSize:64, lineHeight:1,
                 color:'#5bff8a', textShadow:'0 0 16px rgba(91,255,138,.5)',
-              }}>{joined.length}</div>
+              }}>{joined.length + (hostRole === 'player' ? 1 : 0)}</div>
               <div style={{
-                fontFamily:"'Bebas Neue'", fontSize:28, color:'var(--ink-3)', letterSpacing:'.1em',
-              }}>/ 3 IN LOBBY</div>
+                fontFamily:"'Bebas Neue'", fontSize:24, color:'var(--ink-3)', letterSpacing:'.1em',
+              }}>
+                {hostRole === 'spectator' ? 'NO LIMIT · YOU WATCH' : 'NO LIMIT · YOU PLAY'}
+              </div>
             </div>
             <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>
-              Share the code or tap an open slot to add a bot. Start solo anytime.
+              Share the code, tap OPEN SLOT to add a bot, then START GAME. No player limit.
+            </div>
+          </div>
+          {/* HOST ROLE TOGGLE — Player or Spectator */}
+          <div style={{
+            display:'flex', flexDirection:'column', gap:4, alignItems:'center',
+            padding:'8px 10px', borderRadius:10,
+            background:'rgba(0,0,0,.4)', border:'1.5px solid var(--line-2)',
+          }}>
+            <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em' }}>I'M…</div>
+            <div style={{ display:'flex', borderRadius:8, overflow:'hidden', border:'1.5px solid var(--line-2)' }}>
+              <button onClick={() => setHostRole('player')}
+                style={{
+                  padding:'6px 12px', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                  background: hostRole === 'player' ? 'linear-gradient(180deg, #5bff8a, #2a9a4a)' : 'transparent',
+                  color: hostRole === 'player' ? '#001428' : 'var(--ink-2)',
+                  border:'none', cursor:'pointer', fontSize:13,
+                }}>PLAYING</button>
+              <button onClick={() => setHostRole('spectator')}
+                style={{
+                  padding:'6px 12px', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                  background: hostRole === 'spectator' ? 'linear-gradient(180deg, #5cf6ff, #2a7bff)' : 'transparent',
+                  color: hostRole === 'spectator' ? '#001428' : 'var(--ink-2)',
+                  border:'none', cursor:'pointer', fontSize:13,
+                }}>SPECTATING</button>
             </div>
           </div>
           <div className="row" style={{ gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
-            {/* Manual ways to fill the lobby — no more random auto-joins. */}
-            <button className="btn" onClick={addBot} disabled={joined.length >= 3}
+            <button className="btn" onClick={addBot}
               style={{
                 padding:'10px 16px', fontSize:14,
                 background:'linear-gradient(180deg, #a07bff, #5b3ed8)', color:'#fff',
-                opacity: joined.length >= 3 ? 0.5 : 1,
               }}>
               <Icon id="plus" size={13} style={{verticalAlign:'middle', marginRight:4}}/>
               Add Bot
             </button>
-            <button className="btn big" onClick={() => onStart(joined)}
+            <button className="btn big" onClick={() => onStart(joined, hostRole)}
               style={{
                 padding:'18px 36px', fontSize:24, fontFamily:"'Bebas Neue'", letterSpacing:'.12em',
                 background:'linear-gradient(180deg, #5bff8a, #2a9a4a)',
@@ -360,18 +387,41 @@
           }`}</style>
         </div>
 
+        {/* WARM-UP MINI-GAME — only for the host when they're going to PLAY.
+            Spectators skip it (they're not playing the match anyway). */}
+        {hostRole === 'player' && (
+          <div style={{ maxWidth:1100, width:'100%', margin:'14px auto' }}>
+            <LobbyMiniGame profiles={[]} />
+          </div>
+        )}
+        {hostRole === 'spectator' && (
+          <div style={{
+            maxWidth:1100, width:'100%', margin:'14px auto', padding:'14px 18px',
+            borderRadius:12, textAlign:'center',
+            background:'linear-gradient(90deg, rgba(92,246,255,.08), transparent 70%)',
+            border:'1.5px solid rgba(92,246,255,.3)',
+            color:'#5cf6ff', fontSize:13, letterSpacing:'.06em',
+          }}>
+            ▸ SPECTATOR MODE — you'll watch the match without playing. The mini-game is hidden until you switch to PLAYING.
+          </div>
+        )}
+
         {/* JOINED-PLAYER GRID — Gimkit-style avatar tiles */}
         <div style={{
           maxWidth:1100, width:'100%', margin:'0 auto',
           display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))',
           gap:12,
         }}>
-          {/* Host always shown first */}
+          {/* Host always shown first — label reflects PLAYING or SPECTATING role */}
           <div style={{
             padding:'14px 12px', borderRadius:14, textAlign:'center',
-            background:'linear-gradient(180deg, rgba(255,215,106,.18), rgba(255,154,60,.06))',
-            border:'2px solid #ffd76a',
-            boxShadow:'0 6px 24px rgba(255,215,106,.25)',
+            background: hostRole === 'spectator'
+              ? 'linear-gradient(180deg, rgba(92,246,255,.18), rgba(42,123,255,.06))'
+              : 'linear-gradient(180deg, rgba(255,215,106,.18), rgba(255,154,60,.06))',
+            border: hostRole === 'spectator' ? '2px solid #5cf6ff' : '2px solid #ffd76a',
+            boxShadow: hostRole === 'spectator'
+              ? '0 6px 24px rgba(92,246,255,.25)'
+              : '0 6px 24px rgba(255,215,106,.25)',
           }}>
             <div style={{
               width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
@@ -381,7 +431,12 @@
               boxShadow:'0 4px 14px rgba(0,0,0,.5)',
             }}>{(D.getDisplayName(D.getUser()) || 'H').slice(0,1).toUpperCase()}</div>
             <div style={{ fontWeight:800, fontSize:14, color:'#fff' }}>{D.getDisplayName(D.getUser())}</div>
-            <div style={{ fontSize:10, letterSpacing:'.16em', color:'#ffd76a', marginTop:2 }}>HOST</div>
+            <div style={{
+              fontSize:10, letterSpacing:'.16em', marginTop:2,
+              color: hostRole === 'spectator' ? '#5cf6ff' : '#ffd76a',
+            }}>
+              {hostRole === 'spectator' ? 'HOST · SPECTATING' : 'HOST · PLAYING'}
+            </div>
           </div>
           {joined.map(p => (
             <div key={p.id} style={{
@@ -412,27 +467,25 @@
                 }}>×</button>
             </div>
           ))}
-          {/* Pending slots — clickable tiles to fill manually. No auto-join. */}
-          {Array.from({ length: Math.max(0, 3 - joined.length) }).map((_, i) => (
-            <button key={`pending-${i}`} onClick={addBot}
-              title="Add a bot to fill this slot"
-              style={{
-                padding:'14px 12px', borderRadius:14, textAlign:'center',
-                background:'rgba(255,255,255,.02)',
-                border:'2px dashed rgba(255,255,255,.15)',
-                color:'var(--ink-3)', cursor:'pointer',
-                display:'grid', alignContent:'center', minHeight:130,
-                fontFamily:'inherit',
-              }}>
-              <div style={{
-                width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
-                background:'rgba(255,255,255,.04)', display:'grid', placeItems:'center',
-                fontSize:30, color:'var(--ink-3)',
-              }}>+</div>
-              <div style={{ fontSize:11, letterSpacing:'.16em' }}>OPEN SLOT</div>
-              <div style={{ fontSize:10, color:'var(--ink-3)', opacity:.7, marginTop:2 }}>tap to add bot</div>
-            </button>
-          ))}
+          {/* One always-on OPEN SLOT — no cap. Click to add bot, lobby keeps growing. */}
+          <button onClick={addBot}
+            title="Add a bot — lobby has no player limit"
+            style={{
+              padding:'14px 12px', borderRadius:14, textAlign:'center',
+              background:'rgba(255,255,255,.02)',
+              border:'2px dashed rgba(255,255,255,.15)',
+              color:'var(--ink-3)', cursor:'pointer',
+              display:'grid', alignContent:'center', minHeight:130,
+              fontFamily:'inherit',
+            }}>
+            <div style={{
+              width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
+              background:'rgba(255,255,255,.04)', display:'grid', placeItems:'center',
+              fontSize:30, color:'var(--ink-3)',
+            }}>+</div>
+            <div style={{ fontSize:11, letterSpacing:'.16em' }}>OPEN SLOT</div>
+            <div style={{ fontSize:10, color:'var(--ink-3)', opacity:.7, marginTop:2 }}>tap to add bot</div>
+          </button>
           <style>{`
             @keyframes joinPop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
             @keyframes dotsPulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
@@ -2599,6 +2652,12 @@
         case '3': count = 3; break;
         case '4': count = 4; break;
       }
+      // Spectator hosting — host watches; slot 0 is locked as a bot too.
+      let isSpectator = false;
+      try { isSpectator = localStorage.getItem('sf_spectator_v1') === '1'; } catch(e){}
+      if (isSpectator && !lockedBots.includes(0)) lockedBots = [0, ...lockedBots];
+      // One-shot flag — clear so the next non-host session is normal.
+      try { localStorage.removeItem('sf_spectator_v1'); } catch(e){}
       // Party + challenge bake into bot slots so it FEELS like multi-player.
       // - Party friends fill the friendly bot slots after slot 0 (the human).
       // - Challenge friend takes the LAST bot slot (the opponent).
@@ -2974,14 +3033,16 @@
             settings={settings}
             onSettingsChange={setSettings}
             onClose={() => setShowHostingScreen(false)}
-            onStart={(joinedPlayers) => {
-              // Slot the simulated joined players into the party so the lobby
-              // builds them as friendly slots — the host plays alongside them.
+            onStart={(joinedPlayers, role) => {
+              // Joined players slot into the party — they appear in friendly slots.
               setParty(joinedPlayers);
               setShowHostingScreen(false);
-              // Bump player count to fit (host + joined).
-              const total = Math.max(2, Math.min(4, joinedPlayers.length + 1));
+              // Total = joined + (1 if host plays). Engine caps at 4 so any
+              // extra joined players sit out the visible round.
+              const total = Math.max(2, Math.min(4, joinedPlayers.length + (role === 'spectator' ? 0 : 1)));
               setSettings({ ...settings, players: String(total) });
+              // Spectator mode — flag so _buildLobby can lock slot 0 as a bot.
+              try { localStorage.setItem('sf_spectator_v1', role === 'spectator' ? '1' : '0'); } catch(e){}
               setTimeout(() => startLobby(), 60);
             }}
           />
