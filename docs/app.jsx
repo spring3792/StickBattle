@@ -155,26 +155,26 @@
         return c;
       } catch(e) { return 'HOST01'; }
     }, []);
-    // Simulate players trickling in every 1.5–3 seconds, max 3.
-    useEffect(() => {
+    // No auto-spawn — lobby starts empty. Host either invites friends or
+    // adds bots manually. Match makes it clear who's joining and why.
+    function addBot() {
       if (joined.length >= 3) return;
-      const wait = 1500 + Math.floor(Math.random() * 1600);
-      const t = setTimeout(() => {
-        const name = POOL[Math.floor(Math.random() * POOL.length)];
-        const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-        setJoined(prev => prev.concat([{
-          id: `joined-${prev.length}-${name}`, name, color,
-        }]));
-      }, wait);
-      return () => clearTimeout(t);
-    }, [joined.length]);
+      const taken = new Set(joined.map(p => p.name));
+      const pool = POOL.filter(n => !taken.has(n));
+      const name = pool.length ? pool[Math.floor(Math.random() * pool.length)] : `Bot${joined.length + 1}`;
+      const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      setJoined(prev => prev.concat([{
+        id: `bot-${prev.length}-${name}`, name, color, isBot: true,
+      }]));
+    }
     function copyCode() {
       try { navigator.clipboard && navigator.clipboard.writeText(hostCode); } catch(e){}
     }
     function kick(id) {
       setJoined(prev => prev.filter(p => p.id !== id));
     }
-    const canStart = joined.length >= 1;
+    // Solo-startable — host can launch alone or with anyone they've added.
+    const canStart = true;
     return (
       <div style={{
         position:'fixed', inset:0, zIndex:130,
@@ -327,21 +327,33 @@
                 fontFamily:"'Bebas Neue'", fontSize:28, color:'var(--ink-3)', letterSpacing:'.1em',
               }}>/ 3 IN LOBBY</div>
             </div>
+            <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>
+              Share the code or tap an open slot to add a bot. Start solo anytime.
+            </div>
           </div>
-          <button className="btn big" onClick={() => onStart(joined)} disabled={!canStart}
-            style={{
-              padding:'18px 36px', fontSize:24, fontFamily:"'Bebas Neue'", letterSpacing:'.12em',
-              background: canStart
-                ? 'linear-gradient(180deg, #5bff8a, #2a9a4a)'
-                : 'rgba(255,255,255,.06)',
-              color: canStart ? '#001428' : 'var(--ink-3)',
-              boxShadow: canStart ? '0 8px 32px rgba(91,255,138,.5)' : 'none',
-              cursor: canStart ? 'pointer' : 'not-allowed',
-              animation: canStart ? 'startPulse 1.2s ease-in-out infinite' : 'none',
-            }}>
-            <Icon id="play" size={22} style={{verticalAlign:'middle', marginRight:8}}/>
-            {canStart ? 'START GAME' : 'WAITING FOR PLAYERS…'}
-          </button>
+          <div className="row" style={{ gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
+            {/* Manual ways to fill the lobby — no more random auto-joins. */}
+            <button className="btn" onClick={addBot} disabled={joined.length >= 3}
+              style={{
+                padding:'10px 16px', fontSize:14,
+                background:'linear-gradient(180deg, #a07bff, #5b3ed8)', color:'#fff',
+                opacity: joined.length >= 3 ? 0.5 : 1,
+              }}>
+              <Icon id="plus" size={13} style={{verticalAlign:'middle', marginRight:4}}/>
+              Add Bot
+            </button>
+            <button className="btn big" onClick={() => onStart(joined)}
+              style={{
+                padding:'18px 36px', fontSize:24, fontFamily:"'Bebas Neue'", letterSpacing:'.12em',
+                background:'linear-gradient(180deg, #5bff8a, #2a9a4a)',
+                color:'#001428',
+                boxShadow:'0 8px 32px rgba(91,255,138,.5)',
+                animation:'startPulse 1.2s ease-in-out infinite',
+              }}>
+              <Icon id="play" size={22} style={{verticalAlign:'middle', marginRight:8}}/>
+              START GAME
+            </button>
+          </div>
           <style>{`@keyframes startPulse {
             0%,100% { transform: scale(1); }
             50% { transform: scale(1.04); }
@@ -400,24 +412,27 @@
                 }}>×</button>
             </div>
           ))}
-          {/* Pending slot animation while we still have room */}
-          {joined.length < 3 && (
-            <div style={{
-              padding:'14px 12px', borderRadius:14, textAlign:'center',
-              background:'rgba(255,255,255,.02)',
-              border:'2px dashed rgba(255,255,255,.15)',
-              color:'var(--ink-3)',
-              display:'grid', alignContent:'center', minHeight:130,
-            }}>
+          {/* Pending slots — clickable tiles to fill manually. No auto-join. */}
+          {Array.from({ length: Math.max(0, 3 - joined.length) }).map((_, i) => (
+            <button key={`pending-${i}`} onClick={addBot}
+              title="Add a bot to fill this slot"
+              style={{
+                padding:'14px 12px', borderRadius:14, textAlign:'center',
+                background:'rgba(255,255,255,.02)',
+                border:'2px dashed rgba(255,255,255,.15)',
+                color:'var(--ink-3)', cursor:'pointer',
+                display:'grid', alignContent:'center', minHeight:130,
+                fontFamily:'inherit',
+              }}>
               <div style={{
                 width:60, height:60, borderRadius:'50%', margin:'0 auto 8px',
                 background:'rgba(255,255,255,.04)', display:'grid', placeItems:'center',
                 fontSize:30, color:'var(--ink-3)',
-                animation:'dotsPulse 1.6s ease-in-out infinite',
-              }}>•••</div>
-              <div style={{ fontSize:11, letterSpacing:'.16em' }}>WAITING…</div>
-            </div>
-          )}
+              }}>+</div>
+              <div style={{ fontSize:11, letterSpacing:'.16em' }}>OPEN SLOT</div>
+              <div style={{ fontSize:10, color:'var(--ink-3)', opacity:.7, marginTop:2 }}>tap to add bot</div>
+            </button>
+          ))}
           <style>{`
             @keyframes joinPop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
             @keyframes dotsPulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
