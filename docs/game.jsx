@@ -295,33 +295,59 @@ window.StickFightGame = (function () {
         state.bomb = { carrierSlot: first.slot, timer: 60 * 6 /* 6 seconds */ , flashIntense:false };
       }
 
-      // ----- PARKOUR RACE: real course with gaps + floating platforms -----
+      // ----- PARKOUR RACE: brutally hard course — tiny platforms, lava
+      // pits, sawblades, spikes, big vertical climbs. Mistimed jumps =
+      // insta-respawn. -----
       if (state.mode === 'parkour') {
-        // Course fits within W = 1280 canvas. Start ground on left,
-        // finish ground + flag on right.
+        const G = GROUND_Y;
         state.platforms = [
-          // Starting platform (LEFT)
-          { x: 0,    y: GROUND_Y, w: 180, h: 100, solid:true },
-          // Stepping platforms across lava gaps (left → right, varied height)
-          { x: 240,  y: GROUND_Y - 60,  w: 90,  h: 18, solid:false },
-          { x: 370,  y: GROUND_Y - 130, w: 90,  h: 18, solid:false },
-          { x: 500,  y: GROUND_Y - 80,  w: 90,  h: 18, solid:false },
-          { x: 620,  y: GROUND_Y - 160, w: 80,  h: 18, solid:false },
-          { x: 740,  y: GROUND_Y - 100, w: 80,  h: 18, solid:false },
-          { x: 860,  y: GROUND_Y - 60,  w: 90,  h: 18, solid:false },
-          { x: 990,  y: GROUND_Y - 130, w: 80,  h: 18, solid:false },
-          // Finish ground platform (RIGHT)
-          { x: 1100, y: GROUND_Y, w: 180, h: 100, solid:true },
+          // Starting platform (LEFT) — slightly narrower
+          { x: 0,    y: G, w: 130, h: 100, solid:true },
+          // ===== STAGE 1: PIN-POINT PRECISION JUMPS =====
+          // Tiny floating tiles across a lava sea. Spacing forces near-max jumps.
+          { x: 190,  y: G - 70,  w: 44, h: 14, solid:false },
+          { x: 280,  y: G - 130, w: 38, h: 14, solid:false },
+          { x: 360,  y: G - 90,  w: 38, h: 14, solid:false },
+          { x: 440,  y: G - 170, w: 36, h: 14, solid:false },
+          // ===== STAGE 2: VERTICAL CLIMB =====
+          // Tall right wall with stepped platforms; finish at the top
+          { x: 535,  y: G - 100, w: 40, h: 14, solid:false },
+          { x: 595,  y: G - 200, w: 32, h: 12, solid:false },  // tighter
+          { x: 525,  y: G - 280, w: 32, h: 12, solid:false },
+          { x: 615,  y: G - 360, w: 32, h: 12, solid:false },
+          // ===== STAGE 3: HAZARD GAUNTLET =====
+          // Long thin platform suspended over sawblades + spike pit
+          { x: 700,  y: G - 360, w: 200, h: 12, solid:false },
+          // mid-air dodge platforms threaded between sawblades
+          { x: 940,  y: G - 320, w: 38, h: 12, solid:false },
+          { x: 1010, y: G - 260, w: 36, h: 12, solid:false },
+          { x: 1075, y: G - 320, w: 36, h: 12, solid:false },
+          // ===== STAGE 4: FINAL LEAP =====
+          // Big gap, drop down to the finish platform
+          { x: 1160, y: G - 220, w: 50, h: 14, solid:false },
+          // Finish platform (RIGHT) — small, just enough to land on
+          { x: 1180, y: G, w: 100, h: 100, solid:true },
         ];
-        state.hazards = [];
+        // Hazards: lava floor + sawblades in the gauntlet section + spike walls.
+        state.hazards = [
+          // Full lava floor from after start to before finish (instakill if you fall)
+          { x: 130, y: G + 40, w: 1050, h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          // Sawblades along the long thin platform — must time the jumps
+          { x: 740,  y: G - 380, w: 36, h: 36, type:'sawblade', dmg: 999, cooldown: 6 },
+          { x: 820,  y: G - 380, w: 36, h: 36, type:'sawblade', dmg: 999, cooldown: 6 },
+          // Spike strip on the vertical-climb wall pinch
+          { x: 555,  y: G - 210, w: 50, h: 8,  type:'spike',    dmg: 999, cooldown: 6 },
+          // Spike pit hidden between the dodge platforms
+          { x: 1000, y: G - 230, w: 80, h: 8,  type:'spike',    dmg: 999, cooldown: 6 },
+        ];
         // Spawn everyone on the left starting platform
         for (let i = 0; i < state.players.length; i++) {
-          state.players[i].x = 60 + i * 24;
-          state.players[i].y = GROUND_Y - 4;
+          state.players[i].x = 50 + i * 20;
+          state.players[i].y = G - 4;
           state.players[i].vx = 0; state.players[i].vy = 0;
         }
-        // Finish flag — well inside the canvas on the right ground
-        state.finish = { x: 1190, y: GROUND_Y - 90, w: 60, h: 90 };
+        // Finish flag — sits on the small finish platform
+        state.finish = { x: 1210, y: G - 90, w: 50, h: 90 };
       }
 
       // ----- LAST STAND: bots respawn endlessly, count kills -----

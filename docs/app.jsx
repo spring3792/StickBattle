@@ -1594,11 +1594,14 @@
         }
         // stickman — runs at fixed x, hops with s.y. Pose freezes mid-stride
         // while airborne so it looks like a proper jump, not a sprint in the sky.
+        // Use the player's saved fight color so this runner IS their avatar.
+        const playerColor = D.getPlayerColor(D.getUser()) || '#ffd76a';
+        const playerDark = mixToBlack(playerColor, 0.55);
         const cx = RUN_X + pw/2, gy = GY + s.y;
         const airborne = s.y < -0.5;
         ctx.lineCap = 'round';
         // body
-        ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4;
+        ctx.strokeStyle = playerColor; ctx.lineWidth = 2.4;
         ctx.beginPath();
         ctx.moveTo(cx, gy - 18); ctx.lineTo(cx, gy - 4); ctx.stroke();
         // legs — small natural stride on ground, tucked when airborne
@@ -1616,6 +1619,7 @@
         }
         ctx.stroke();
         // arms — natural alongside body, slight counter-swing on ground
+        ctx.strokeStyle = playerColor;
         ctx.beginPath();
         if (airborne) {
           ctx.moveTo(cx, gy - 14); ctx.lineTo(cx - 4, gy - 17);
@@ -1625,10 +1629,24 @@
           ctx.moveTo(cx, gy - 14); ctx.lineTo(cx + 3 + armSwing, gy - 9);
         }
         ctx.stroke();
-        // head
-        ctx.fillStyle = '#ffd76a';
+        // head — gradient using the player's color
+        const headG = ctx.createRadialGradient(cx - 1, gy - 23, 1, cx, gy - 22, 4.5);
+        headG.addColorStop(0, '#ffe2bd');
+        headG.addColorStop(0.7, playerColor);
+        headG.addColorStop(1, playerDark);
+        ctx.fillStyle = headG;
         ctx.beginPath(); ctx.arc(cx, gy - 22, 4.5, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = '#1a1a22'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = playerDark; ctx.lineWidth = 1; ctx.stroke();
+        // Draw the equipped hat on top of the head, if any.
+        const eqHatId = D.getEquipped(D.getUser(), 'hat');
+        const eqHat = (D.HATS || []).find(h => h.id === eqHatId);
+        if (eqHat && eqHat.draw && eqHatId !== 'none') {
+          ctx.save();
+          ctx.translate(cx, gy - 22 - 4.5 + 2); // top of head
+          ctx.scale(0.35, 0.35);                // shrink the hat to fit the small head
+          try { eqHat.draw(ctx); } catch(e){}
+          ctx.restore();
+        }
         // eyes
         ctx.fillStyle = '#1a1a22';
         ctx.beginPath(); ctx.arc(cx + 1.4, gy - 22.5, 0.7, 0, Math.PI*2); ctx.fill();
