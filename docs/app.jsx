@@ -1493,7 +1493,8 @@
       const s = stateRef.current;
       if (!s) return;
       if (s.jumpsUsed >= 2) return;
-      s.vy = -10;
+      // Slightly less hangtime so jumps feel snappy, not floaty.
+      s.vy = s.jumpsUsed === 0 ? -7.6 : -6.2; // first jump higher, double-jump smaller
       s.jumpsUsed += 1;
     }
     useEffect(() => {
@@ -1591,24 +1592,38 @@
             ctx.strokeStyle = '#5a0a1a'; ctx.lineWidth = 1.5; ctx.stroke();
           }
         }
-        // stickman — runs at fixed x, hops with s.y
+        // stickman — runs at fixed x, hops with s.y. Pose freezes mid-stride
+        // while airborne so it looks like a proper jump, not a sprint in the sky.
         const cx = RUN_X + pw/2, gy = GY + s.y;
+        const airborne = s.y < -0.5;
         ctx.lineCap = 'round';
         // body
         ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4;
         ctx.beginPath();
         ctx.moveTo(cx, gy - 18); ctx.lineTo(cx, gy - 4); ctx.stroke();
-        // legs — animate with distance
-        const run = (s.dist * 0.18) % (Math.PI * 2);
-        const legSwing = Math.sin(run) * 6;
+        // legs — small natural stride on ground, tucked when airborne
+        const run = (s.dist * 0.12) % (Math.PI * 2);
+        const legSwing = airborne ? 0 : Math.sin(run) * 3;     // smaller amplitude (was 6)
+        const armSwing = airborne ? 0 : Math.sin(run) * 2;
         ctx.beginPath();
-        ctx.moveTo(cx, gy - 4); ctx.lineTo(cx - 4 + legSwing, gy);
-        ctx.moveTo(cx, gy - 4); ctx.lineTo(cx + 4 - legSwing, gy);
+        if (airborne) {
+          // Tucked jump pose — both legs slightly back.
+          ctx.moveTo(cx, gy - 4); ctx.lineTo(cx - 3, gy - 1);
+          ctx.moveTo(cx, gy - 4); ctx.lineTo(cx + 3, gy - 1);
+        } else {
+          ctx.moveTo(cx, gy - 4); ctx.lineTo(cx - 3 + legSwing, gy);
+          ctx.moveTo(cx, gy - 4); ctx.lineTo(cx + 3 - legSwing, gy);
+        }
         ctx.stroke();
-        // arms swing opposite
+        // arms — natural alongside body, slight counter-swing on ground
         ctx.beginPath();
-        ctx.moveTo(cx, gy - 14); ctx.lineTo(cx - 5 - legSwing*0.6, gy - 8);
-        ctx.moveTo(cx, gy - 14); ctx.lineTo(cx + 5 + legSwing*0.6, gy - 8);
+        if (airborne) {
+          ctx.moveTo(cx, gy - 14); ctx.lineTo(cx - 4, gy - 17);
+          ctx.moveTo(cx, gy - 14); ctx.lineTo(cx + 4, gy - 17);
+        } else {
+          ctx.moveTo(cx, gy - 14); ctx.lineTo(cx - 3 - armSwing, gy - 9);
+          ctx.moveTo(cx, gy - 14); ctx.lineTo(cx + 3 + armSwing, gy - 9);
+        }
         ctx.stroke();
         // head
         ctx.fillStyle = '#ffd76a';
@@ -1950,6 +1965,21 @@
         <div className="row" style={{ alignItems:'center', gap:14, flexWrap:'wrap' }}>
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.1em', color:'#a07bff' }}>
             ▸ CHANGE YOUR LOOK
+          </div>
+          {/* Live stickman preview — reflects the current color + cosmetics. */}
+          <div style={{
+            width:78, height:110, borderRadius:10,
+            background:'linear-gradient(180deg, rgba(160,123,255,.10), rgba(8,4,18,.4))',
+            border:'1.5px solid rgba(160,123,255,.4)',
+            display:'grid', placeItems:'center', flexShrink:0,
+          }}>
+            <MiniStickman
+              color={cur}
+              dark={mixToBlack(cur, 0.55)}
+              hat={(D.HATS    || []).find(h => h.id === eqHat)    || (D.HATS    && D.HATS[0])}
+              outfit={(D.OUTFITS || []).find(o => o.id === eqOutfit) || (D.OUTFITS && D.OUTFITS[0])}
+              face={(D.FACES   || []).find(f => f.id === eqFace)   || (D.FACES   && D.FACES[0])}
+              animated/>
           </div>
           <ProfileAvatar name={active} size={44} />
           {/* Color swatches */}
