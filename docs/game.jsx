@@ -295,59 +295,51 @@ window.StickFightGame = (function () {
         state.bomb = { carrierSlot: first.slot, timer: 60 * 6 /* 6 seconds */ , flashIntense:false };
       }
 
-      // ----- PARKOUR RACE: brutally hard course — tiny platforms, lava
-      // pits, sawblades, spikes, big vertical climbs. Mistimed jumps =
-      // insta-respawn. -----
+      // ----- PARKOUR RACE: challenging but fair. Bigger platforms,
+      // lava only in the pits between them, one sawblade as a focal
+      // hazard rather than a wall of them. -----
       if (state.mode === 'parkour') {
         const G = GROUND_Y;
         state.platforms = [
-          // Starting platform (LEFT) — slightly narrower
-          { x: 0,    y: G, w: 130, h: 100, solid:true },
-          // ===== STAGE 1: PIN-POINT PRECISION JUMPS =====
-          // Tiny floating tiles across a lava sea. Spacing forces near-max jumps.
-          { x: 190,  y: G - 70,  w: 44, h: 14, solid:false },
-          { x: 280,  y: G - 130, w: 38, h: 14, solid:false },
-          { x: 360,  y: G - 90,  w: 38, h: 14, solid:false },
-          { x: 440,  y: G - 170, w: 36, h: 14, solid:false },
-          // ===== STAGE 2: VERTICAL CLIMB =====
-          // Tall right wall with stepped platforms; finish at the top
-          { x: 535,  y: G - 100, w: 40, h: 14, solid:false },
-          { x: 595,  y: G - 200, w: 32, h: 12, solid:false },  // tighter
-          { x: 525,  y: G - 280, w: 32, h: 12, solid:false },
-          { x: 615,  y: G - 360, w: 32, h: 12, solid:false },
-          // ===== STAGE 3: HAZARD GAUNTLET =====
-          // Long thin platform suspended over sawblades + spike pit
-          { x: 700,  y: G - 360, w: 200, h: 12, solid:false },
-          // mid-air dodge platforms threaded between sawblades
-          { x: 940,  y: G - 320, w: 38, h: 12, solid:false },
-          { x: 1010, y: G - 260, w: 36, h: 12, solid:false },
-          { x: 1075, y: G - 320, w: 36, h: 12, solid:false },
-          // ===== STAGE 4: FINAL LEAP =====
-          // Big gap, drop down to the finish platform
-          { x: 1160, y: G - 220, w: 50, h: 14, solid:false },
-          // Finish platform (RIGHT) — small, just enough to land on
-          { x: 1180, y: G, w: 100, h: 100, solid:true },
+          // Starting platform (LEFT)
+          { x: 0,    y: G, w: 170, h: 100, solid:true },
+          // ===== STAGE 1: STEPPING TILES =====
+          { x: 220,  y: G - 60,  w: 80, h: 16, solid:false },
+          { x: 340,  y: G - 120, w: 70, h: 16, solid:false },
+          { x: 460,  y: G - 80,  w: 70, h: 16, solid:false },
+          // ===== STAGE 2: VERTICAL CLIMB (3 steps, comfortable widths) =====
+          { x: 570,  y: G - 160, w: 70, h: 16, solid:false },
+          { x: 510,  y: G - 240, w: 60, h: 14, solid:false },
+          { x: 600,  y: G - 320, w: 60, h: 14, solid:false },
+          // ===== STAGE 3: HIGH BRIDGE — one sawblade in the middle =====
+          { x: 690,  y: G - 320, w: 230, h: 14, solid:false },
+          // ===== STAGE 4: DROP DOWN TO FINISH =====
+          { x: 980,  y: G - 240, w: 70, h: 14, solid:false },
+          { x: 1080, y: G - 160, w: 60, h: 14, solid:false },
+          // Finish platform (RIGHT)
+          { x: 1150, y: G, w: 130, h: 100, solid:true },
         ];
-        // Hazards: lava floor + sawblades in the gauntlet section + spike walls.
+        // Hazards: lava ONLY in the pits between platforms (not a single
+        // continuous strip), plus one well-telegraphed sawblade on the bridge.
         state.hazards = [
-          // Full lava floor from after start to before finish (instakill if you fall)
-          { x: 130, y: G + 40, w: 1050, h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          // Sawblades along the long thin platform — must time the jumps
-          { x: 740,  y: G - 380, w: 36, h: 36, type:'sawblade', dmg: 999, cooldown: 6 },
-          { x: 820,  y: G - 380, w: 36, h: 36, type:'sawblade', dmg: 999, cooldown: 6 },
-          // Spike strip on the vertical-climb wall pinch
-          { x: 555,  y: G - 210, w: 50, h: 8,  type:'spike',    dmg: 999, cooldown: 6 },
-          // Spike pit hidden between the dodge platforms
-          { x: 1000, y: G - 230, w: 80, h: 8,  type:'spike',    dmg: 999, cooldown: 6 },
+          // Lava pits sit just below ground level, in the gaps only
+          { x: 170, y: G + 40, w: 50,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 300, y: G + 40, w: 40,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 410, y: G + 40, w: 50,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 530, y: G + 40, w: 40,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 660, y: G + 40, w: 30,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 920, y: G + 40, w: 60,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 1050, y: G + 40, w: 30, h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          { x: 1140, y: G + 40, w: 10, h: 60, type:'lava', dmg: 999, cooldown: 6 },
+          // One sawblade dead center on the bridge — easy to spot, hard to time
+          { x: 790,  y: G - 340, w: 36, h: 36, type:'sawblade', dmg: 999, cooldown: 6 },
         ];
-        // Spawn everyone on the left starting platform
         for (let i = 0; i < state.players.length; i++) {
-          state.players[i].x = 50 + i * 20;
+          state.players[i].x = 60 + i * 22;
           state.players[i].y = G - 4;
           state.players[i].vx = 0; state.players[i].vy = 0;
         }
-        // Finish flag — sits on the small finish platform
-        state.finish = { x: 1210, y: G - 90, w: 50, h: 90 };
+        state.finish = { x: 1200, y: G - 90, w: 60, h: 90 };
       }
 
       // ----- LAST STAND: bots respawn endlessly, count kills -----

@@ -760,7 +760,8 @@
   }
 
   function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins,
-    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen }) {
+    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen,
+    onOpenAdmin, adminKey }) {
     const title = D.eduTitle(settings.edu);
     const sub = D.eduSub(settings.edu);
     const allSets = Q.allSets();
@@ -788,6 +789,7 @@
           party={party} onClearParty={onClearParty}
           challengeFriend={challengeFriend} onClearChallenge={onClearChallenge}
           onOpenHostingScreen={onOpenHostingScreen}
+          onOpenAdmin={onOpenAdmin} adminKey={adminKey}
           onOpenTrade={onOpenTrade} onPreviewSet={onPreviewSet} />
       </div>
     );
@@ -798,7 +800,8 @@
     readyModes, soonModes, allSets, activeSet,
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
     onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet,
-    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen }) {
+    playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen,
+    onOpenAdmin, adminKey }) {
     // Chip helper — icon only on narrow, icon+label otherwise
     const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
@@ -844,6 +847,11 @@
             <Chip icon="play"     label={`Queue${queueCount ? ` (${queueCount})` : ''}`}
                   onClick={onOpenQueue} color={queueCount ? '#5cf6ff' : '#7bff8a'}/>
             <Chip icon="sparkle"  label="Codes"    onClick={onOpenCodes}     color="#5bf0e8"/>
+            {/* ADMIN chip — only shown after redeeming the ADMIN code.
+                adminKey forces a re-check after the user closes a modal. */}
+            {D.isAdmin && D.isAdmin() && onOpenAdmin && (
+              <Chip icon="settings" label="ADMIN"  onClick={onOpenAdmin}     color="#ff5b6e" glow/>
+            )}
             <Chip icon="settings" label="Settings" onClick={onOpenSettings}/>
           </div>
         </div>
@@ -3091,6 +3099,10 @@
     const [showFriends, setShowFriends] = useState(false);
     const [showProfile, setShowProfile] = useState(false);
     const [showQueue, setShowQueue] = useState(false);
+    const [showAdmin, setShowAdmin] = useState(false);
+    // Re-render trigger so the ADMIN chip shows up the instant the user
+    // redeems the ADMIN code in the Codes modal.
+    const [adminPing, setAdminPing] = useState(0);
     // Gimkit-style hosting waiting room — full screen with a big PIN, live
     // joined-players list, and a START GAME button.
     const [showHostingScreen, setShowHostingScreen] = useState(false);
@@ -3375,8 +3387,10 @@
             coins={coins}
             onOpenProfile={() => setShowProfile(true)}
             onOpenQueue={() => setShowQueue(true)}
+            onOpenAdmin={() => setShowAdmin(true)}
             onOpenHostingScreen={() => setShowHostingScreen(true)}
             queueCount={playQueue.length}
+            adminKey={adminPing}
             playMode={playMode}
             onChangePlayMode={changePlayMode}
             onQuickMatch={quickMatch}
@@ -3510,7 +3524,8 @@
             onOpenCodes={() => setShowCodes(true)} />
         )}
         {showCodes && (
-          <CodesModal onClose={() => setShowCodes(false)} onCoinsChanged={refreshCoins} />
+          <CodesModal onClose={() => setShowCodes(false)} onCoinsChanged={refreshCoins}
+            onAdminGranted={() => { setShowAdmin(true); setAdminPing(p => p + 1); }} />
         )}
         {showProfile && (
           <ProfileModal onClose={() => setShowProfile(false)}
@@ -3552,6 +3567,10 @@
         )}
         {showCrates && (
           <CrateModal onClose={() => { setShowCrates(false); refreshCoins(); }}
+                      onCoinsChanged={refreshCoins} />
+        )}
+        {showAdmin && (
+          <AdminPanel onClose={() => { setShowAdmin(false); setAdminPing(p => p + 1); refreshCoins(); }}
                       onCoinsChanged={refreshCoins} />
         )}
         {showHostingScreen && (
@@ -4085,14 +4104,24 @@
   }
 
   // ============== codes modal ==============
-  function CodesModal({ onClose, onCoinsChanged }) {
+  function CodesModal({ onClose, onCoinsChanged, onAdminGranted }) {
     const [input, setInput] = useState('');
     const [msg, setMsg] = useState({ ok:null, text:'' });
     const [admin, setAdminState] = useState(D.isAdmin());
     function submit() {
+      const wasAdmin = D.isAdmin();
       const r = D.redeemCode(input);
       setMsg({ ok:r.ok, text:r.msg });
-      if (r.ok) { setInput(''); setAdminState(D.isAdmin()); onCoinsChanged && onCoinsChanged(); }
+      if (r.ok) {
+        setInput('');
+        setAdminState(D.isAdmin());
+        onCoinsChanged && onCoinsChanged();
+        // Auto-open the admin control panel when the user just unlocked it.
+        if (!wasAdmin && D.isAdmin() && onAdminGranted) {
+          onAdminGranted();
+          onClose();
+        }
+      }
     }
     return (
       <ModalShell title="Redeem a code" onClose={onClose}
@@ -4730,6 +4759,132 @@
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Admin panel — unlocked by redeeming the ADMIN code. Lets the user
+  // grant coins, unlock all cosmetics, reset progress, and toggle admin off.
+  function AdminPanel({ onClose, onCoinsChanged }) {
+    const [tick, force] = useState(0);
+    const coins = D.getCoins();
+    const ownedCount = D.getOwned().size;
+    const friendsCount = D.getFriends().length;
+    function giveCoins(n) {
+      D.addCoins(n);
+      onCoinsChanged && onCoinsChanged();
+      force(t => t + 1);
+    }
+    function unlockAll() {
+      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS]];
+      let count = 0;
+      for (const [kind, list] of kinds) {
+        for (const item of (list || [])) {
+          if (!D.isOwned(kind, item.id, item)) {
+            D.ownItem(kind, item.id);
+            count++;
+          }
+        }
+      }
+      alert(`Unlocked ${count} new cosmetic(s).`);
+      force(t => t + 1);
+    }
+    function turnOffAdmin() {
+      if (!confirm('Turn off admin mode?')) return;
+      D.setAdmin(false);
+      onClose();
+    }
+    function wipeProgress() {
+      if (!confirm('WIPE this profile? Coins, cosmetics, friends — all reset. This cannot be undone.')) return;
+      ['sf_coins_v1','sf_owned_v1','sf_redeemed_v1','sf_friends_v1','sf_trades_v1']
+        .forEach(k => { try { localStorage.removeItem(k); localStorage.removeItem(k + '__' + D.getUser()); } catch(e){} });
+      onCoinsChanged && onCoinsChanged();
+      onClose();
+    }
+    return (
+      <div style={{ position:'fixed', inset:0, zIndex:140,
+        background:'rgba(2,4,12,.85)', display:'grid', placeItems:'center', padding:14, backdropFilter:'blur(4px)' }}>
+        <div className="panel" style={{
+          width:'min(540px, 96vw)', padding:0,
+          background:'linear-gradient(160deg, rgba(60,10,30,.95), rgba(8,4,18,.97))',
+          border:'2px solid rgba(255,91,110,.6)',
+          boxShadow:'0 12px 48px rgba(255,91,110,.35)',
+        }}>
+          {/* HEADER */}
+          <div className="row" style={{
+            padding:'14px 18px', alignItems:'center',
+            borderBottom:'1px solid var(--line)',
+            background:'linear-gradient(90deg, rgba(255,91,110,.18), transparent 70%)',
+          }}>
+            <div>
+              <div style={{ fontSize:11, letterSpacing:'.3em', color:'#ff8a9a', fontWeight:800 }}>
+                ⚠ ADMIN MODE
+              </div>
+              <div className="title-art" style={{ fontSize:28, lineHeight:.9, color:'#ff8a9a' }}>CONTROL PANEL</div>
+            </div>
+            <div style={{ flex:1 }}/>
+            <button className="btn sm ghost" onClick={onClose}>
+              <Icon id="x" size={12}/> Close
+            </button>
+          </div>
+          {/* STATS */}
+          <div style={{ padding:'12px 18px', display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
+            <div className="section-card" style={{ margin:0, padding:10, textAlign:'center' }}>
+              <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em' }}>COINS</div>
+              <div style={{ fontFamily:"'Bebas Neue'", fontSize:26, color:'#ffd76a' }}>{coins.toLocaleString()}</div>
+            </div>
+            <div className="section-card" style={{ margin:0, padding:10, textAlign:'center' }}>
+              <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em' }}>OWNED</div>
+              <div style={{ fontFamily:"'Bebas Neue'", fontSize:26, color:'#5cf6ff' }}>{ownedCount}</div>
+            </div>
+            <div className="section-card" style={{ margin:0, padding:10, textAlign:'center' }}>
+              <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em' }}>FRIENDS</div>
+              <div style={{ fontFamily:"'Bebas Neue'", fontSize:26, color:'#7bff8a' }}>{friendsCount}</div>
+            </div>
+          </div>
+          {/* GIVE COINS */}
+          <div style={{ padding:'0 18px 12px' }}>
+            <div style={{ fontSize:11, letterSpacing:'.2em', color:'var(--ink-3)', marginBottom:6 }}>GIVE COINS</div>
+            <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+              {[100, 500, 1000, 5000, 10000, 100000].map(n => (
+                <button key={n} className="btn sm" onClick={() => giveCoins(n)}
+                  style={{ background:'linear-gradient(180deg, #ffd76a, #ff9a3c)', color:'#1a0e22', fontWeight:800 }}>
+                  +{n.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* UNLOCK */}
+          <div style={{ padding:'0 18px 12px' }}>
+            <div style={{ fontSize:11, letterSpacing:'.2em', color:'var(--ink-3)', marginBottom:6 }}>COSMETICS</div>
+            <button className="btn" onClick={unlockAll}
+              style={{ background:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428', padding:'8px 16px' }}>
+              <Icon id="check" size={13} style={{verticalAlign:'middle', marginRight:6}}/>
+              Unlock ALL hats / outfits / faces / trails
+            </button>
+          </div>
+          {/* DANGER ZONE */}
+          <div style={{
+            padding:'12px 18px',
+            background:'rgba(255,91,110,.08)',
+            borderTop:'1px solid rgba(255,91,110,.25)',
+          }}>
+            <div style={{ fontSize:11, letterSpacing:'.2em', color:'#ff8a9a', marginBottom:6 }}>⚠ DANGER ZONE</div>
+            <div className="row" style={{ gap:8, flexWrap:'wrap' }}>
+              <button className="btn sm ghost" onClick={turnOffAdmin}
+                style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
+                <Icon id="x" size={11}/> Turn off admin
+              </button>
+              <button className="btn sm ghost" onClick={wipeProgress}
+                style={{ borderColor:'rgba(255,91,110,.8)', color:'#ff5b6e', fontWeight:800 }}>
+                <Icon id="x" size={11}/> WIPE all progress
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize:11, color:'var(--ink-3)', padding:'10px 18px', textAlign:'center' }}>
+            Type "RESETADMIN" in the CODES panel to exit admin mode without this dialog.
           </div>
         </div>
       </div>
