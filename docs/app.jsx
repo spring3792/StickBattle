@@ -1966,20 +1966,23 @@
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.1em', color:'#a07bff' }}>
             ▸ CHANGE YOUR LOOK
           </div>
-          {/* Live stickman preview — reflects the current color + cosmetics. */}
+          {/* Live stickman preview — full 160×190 canvas, scaled inside a
+              compact box. CSS transform avoids cropping/layering glitches. */}
           <div style={{
-            width:78, height:110, borderRadius:10,
+            width:112, height:135, borderRadius:10,
             background:'linear-gradient(180deg, rgba(160,123,255,.10), rgba(8,4,18,.4))',
             border:'1.5px solid rgba(160,123,255,.4)',
-            display:'grid', placeItems:'center', flexShrink:0,
+            display:'grid', placeItems:'center', flexShrink:0, overflow:'hidden',
           }}>
-            <MiniStickman
-              color={cur}
-              dark={mixToBlack(cur, 0.55)}
-              hat={(D.HATS    || []).find(h => h.id === eqHat)    || (D.HATS    && D.HATS[0])}
-              outfit={(D.OUTFITS || []).find(o => o.id === eqOutfit) || (D.OUTFITS && D.OUTFITS[0])}
-              face={(D.FACES   || []).find(f => f.id === eqFace)   || (D.FACES   && D.FACES[0])}
-              animated/>
+            <div style={{ transform:'scale(.7)', transformOrigin:'center center' }}>
+              <MiniStickman
+                color={cur}
+                dark={mixToBlack(cur, 0.55)}
+                hat={(D.HATS    || []).find(h => h.id === eqHat)    || (D.HATS    && D.HATS[0])}
+                outfit={(D.OUTFITS || []).find(o => o.id === eqOutfit) || (D.OUTFITS && D.OUTFITS[0])}
+                face={(D.FACES   || []).find(f => f.id === eqFace)   || (D.FACES   && D.FACES[0])}
+                animated/>
+            </div>
           </div>
           <ProfileAvatar name={active} size={44} />
           {/* Color swatches */}
