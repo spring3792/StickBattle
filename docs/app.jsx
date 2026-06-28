@@ -1926,21 +1926,28 @@
       return (
         <div style={{ width:'100%' }}>
           <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em', marginBottom:4 }}>
-            {label}
+            {label} <span style={{ opacity:.55 }}>· {list.length}</span>
           </div>
-          <div className="row" style={{ gap:4, flexWrap:'wrap' }}>
+          {/* Single horizontal row — scrolls instead of wrapping into a wall. */}
+          <div style={{
+            display:'flex', gap:4, flexWrap:'nowrap',
+            overflowX:'auto', overflowY:'hidden',
+            paddingBottom:4,
+            scrollbarWidth:'thin',
+          }}>
             {list.map(item => {
               const on = eq === item.id || (!eq && item.id === list[0].id);
               return (
                 <button key={item.id} onClick={() => pickEquip(kind, item.id)}
                   title={item.name}
                   style={{
-                    padding:'4px 10px', borderRadius:6,
+                    padding:'4px 10px', borderRadius:6, flexShrink:0,
                     background: on ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
                     border:`1.5px solid ${on ? 'var(--fire-2)' : 'var(--line)'}`,
                     color: on ? '#fff' : 'var(--ink-2)',
                     fontFamily:"'Bebas Neue'", letterSpacing:'.05em', fontSize:12,
                     cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5,
+                    whiteSpace:'nowrap',
                   }}>
                   <span style={{
                     width:10, height:10, borderRadius:3,
@@ -1966,15 +1973,22 @@
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.1em', color:'#a07bff' }}>
             ▸ CHANGE YOUR LOOK
           </div>
-          {/* Live stickman preview — full 160×190 canvas, scaled inside a
-              compact box. CSS transform avoids cropping/layering glitches. */}
+          {/* Live stickman preview — bigger box, properly centred. The
+              MiniStickman canvas anchors the figure low (it adds +32 to
+              center.y) so I shift the wrapper UP by 16 to balance it. */}
           <div style={{
-            width:112, height:135, borderRadius:10,
-            background:'linear-gradient(180deg, rgba(160,123,255,.10), rgba(8,4,18,.4))',
-            border:'1.5px solid rgba(160,123,255,.4)',
-            display:'grid', placeItems:'center', flexShrink:0, overflow:'hidden',
+            width:160, height:200, borderRadius:12,
+            background:'linear-gradient(180deg, rgba(160,123,255,.12), rgba(8,4,18,.55))',
+            border:'2px solid rgba(160,123,255,.55)',
+            position:'relative', overflow:'hidden', flexShrink:0,
+            boxShadow:'inset 0 0 20px rgba(160,123,255,.15)',
           }}>
-            <div style={{ transform:'scale(.7)', transformOrigin:'center center' }}>
+            <div style={{
+              position:'absolute',
+              left:'50%', top:'50%',
+              transform:'translate(-50%, -50%) translateY(-12px)',
+              pointerEvents:'none',
+            }}>
               <MiniStickman
                 color={cur}
                 dark={mixToBlack(cur, 0.55)}
@@ -2268,15 +2282,17 @@
         // torso (slim)
         ctx.lineWidth = 4.5;
         ctx.beginPath(); ctx.moveTo(0, -32); ctx.lineTo(0, -2); ctx.stroke();
-        if (outfit && outfit.draw && !outfit.behind) {
-          ctx.save(); ctx.translate(0, -30); outfit.draw(ctx); ctx.restore();
-        }
-        // arms (slim)
+        // arms (slim) — drawn BEFORE the outfit so clothes sit on top.
         ctx.lineWidth = 3.8;
         ctx.beginPath();
         ctx.moveTo(0, -27); ctx.lineTo(-6, -18); ctx.lineTo(-10, -10);
         ctx.moveTo(0, -27); ctx.lineTo( 6, -18); ctx.lineTo( 10, -10);
         ctx.stroke();
+        if (outfit && outfit.draw && !outfit.behind) {
+          // Outfit drawn AFTER arms so a hoodie/cape/shirt actually covers
+          // the body lines instead of getting buried behind the arms.
+          ctx.save(); ctx.translate(0, -30); outfit.draw(ctx); ctx.restore();
+        }
         ctx.fillStyle = color || '#5bf';
         ctx.beginPath(); ctx.arc(-10, -10, 2.4, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc( 10, -10, 2.4, 0, Math.PI*2); ctx.fill();
