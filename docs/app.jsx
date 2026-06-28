@@ -1892,7 +1892,54 @@
       D.setAvatar(active, emoji);
       force(n => n + 1);
     }
+    function pickEquip(kind, id) {
+      D.setEquipped(active, kind, id);
+      force(n => n + 1);
+    }
     const emojis = (D.AVATARS || []).slice(0, 10);
+    // Stickman cosmetics — only show items the user owns (plus 'none' default).
+    const ownedHats    = D.HATS    ? D.HATS.filter(h => D.isOwned('hat', h.id, h))       : [];
+    const ownedOutfits = D.OUTFITS ? D.OUTFITS.filter(o => D.isOwned('outfit', o.id, o)) : [];
+    const ownedFaces   = D.FACES   ? D.FACES.filter(f => D.isOwned('face', f.id, f))     : [];
+    const ownedTrails  = D.TRAILS  ? D.TRAILS.filter(t => D.isOwned('trail', t.id, t))   : [];
+    const eqHat    = D.getEquipped(active, 'hat');
+    const eqOutfit = D.getEquipped(active, 'outfit');
+    const eqFace   = D.getEquipped(active, 'face');
+    const eqTrail  = D.getEquipped(active, 'trail');
+    function CosmeticRow({ label, list, eq, kind, dot }) {
+      if (!list || list.length === 0) return null;
+      return (
+        <div style={{ width:'100%' }}>
+          <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em', marginBottom:4 }}>
+            {label}
+          </div>
+          <div className="row" style={{ gap:4, flexWrap:'wrap' }}>
+            {list.map(item => {
+              const on = eq === item.id || (!eq && item.id === list[0].id);
+              return (
+                <button key={item.id} onClick={() => pickEquip(kind, item.id)}
+                  title={item.name}
+                  style={{
+                    padding:'4px 10px', borderRadius:6,
+                    background: on ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                    border:`1.5px solid ${on ? 'var(--fire-2)' : 'var(--line)'}`,
+                    color: on ? '#fff' : 'var(--ink-2)',
+                    fontFamily:"'Bebas Neue'", letterSpacing:'.05em', fontSize:12,
+                    cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5,
+                  }}>
+                  <span style={{
+                    width:10, height:10, borderRadius:3,
+                    background: item.color || (item.id === 'none' || item.id === 'default' ? 'transparent' : dot),
+                    border: (item.id === 'none' || item.id === 'default') ? '1px dashed var(--line-2)' : 'none',
+                  }}/>
+                  {item.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="panel" style={{
         maxWidth: 1280, margin:'0 auto', width:'100%',
@@ -1938,6 +1985,14 @@
               Full Customize
             </button>
           )}
+        </div>
+        {/* STICKMAN COSMETIC ROWS — hat, outfit, face, trail. Quick equip
+            directly in the lobby. Saved to the user's profile meta. */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:10, marginTop:10 }}>
+          <CosmeticRow label="HAT"    list={ownedHats}    eq={eqHat}    kind="hat"    dot="#ff9a3c"/>
+          <CosmeticRow label="OUTFIT" list={ownedOutfits} eq={eqOutfit} kind="outfit" dot="#5cf6ff"/>
+          <CosmeticRow label="FACE"   list={ownedFaces}   eq={eqFace}   kind="face"   dot="#ffd76a"/>
+          <CosmeticRow label="TRAIL"  list={ownedTrails}  eq={eqTrail}  kind="trail"  dot="#a07bff"/>
         </div>
       </div>
     );
@@ -3074,15 +3129,25 @@
         else if (isBot && playMode === 'online' && useName.startsWith('CPU')) {
           useName = onlineNames[(i + Math.floor(Date.now()/1000)) % onlineNames.length];
         }
+        // Slot 0 (human) seeds cosmetics from the user's saved equipped
+        // picks so their lobby/match look matches what they picked outside.
+        const eqHatId    = isHumanSlot ? D.getEquipped(D.getUser(), 'hat')    : null;
+        const eqOutfitId = isHumanSlot ? D.getEquipped(D.getUser(), 'outfit') : null;
+        const eqFaceId   = isHumanSlot ? D.getEquipped(D.getUser(), 'face')   : null;
+        const eqTrailId  = isHumanSlot ? D.getEquipped(D.getUser(), 'trail')  : null;
+        const hatObj    = (eqHatId    && D.HATS.find(h    => h.id    === eqHatId))    || D.HATS[0];
+        const outfitObj = (eqOutfitId && D.OUTFITS.find(o => o.id    === eqOutfitId)) || D.OUTFITS[0];
+        const faceObj   = (eqFaceId   && D.FACES.find(f   => f.id    === eqFaceId))   || D.FACES[0];
+        const trailObj  = (eqTrailId  && D.TRAILS.find(t  => t.id    === eqTrailId))  || D.TRAILS[0];
         built.push({
           _slot: i, _score: 0, _target: settings.target,
           isBot, lockedBot: isBot,
           name: useName,
           colorId: c.id, color: useColor, darkColor: useDark,
-          hatId: 'none',    hat:    D.HATS[0],
-          outfitId: 'none', outfit: D.OUTFITS[0],
-          faceId: 'default',face:   D.FACES[0],
-          trailId: 'none',  trail:  D.TRAILS[0],
+          hatId: hatObj.id,    hat: hatObj,
+          outfitId: outfitObj.id, outfit: outfitObj,
+          faceId: faceObj.id, face: faceObj,
+          trailId: trailObj.id, trail: trailObj,
           buffs: [],
         });
       }

@@ -188,6 +188,21 @@ window.GameData = (function () {
     const m = getProfileMeta(name);
     return m.pic || null;
   }
+  // Equipped cosmetic id per kind (hat/outfit/face/trail). Persisted on the
+  // profile meta so the lobby and arena can default slot 0 to the user's
+  // chosen look.
+  function setEquipped(name, kind, id) {
+    const meta = getProfileMeta(name);
+    meta.eq = meta.eq || {};
+    if (id) meta.eq[kind] = id;
+    else delete meta.eq[kind];
+    setProfileMeta(name, meta);
+  }
+  function getEquipped(name, kind) {
+    const m = getProfileMeta(name);
+    return (m.eq && m.eq[kind]) || null;
+  }
+
   // Stickman color — applied as the default player color when starting matches.
   // Hex string (e.g. "#5cf6ff"). Falls back to a per-slot default if unset.
   function setPlayerColor(name, color) {
@@ -649,6 +664,7 @@ window.GameData = (function () {
     getDisplayName, setDisplayName,
     getCustomAvatar, setCustomAvatar,
     getPlayerColor, setPlayerColor,
+    getEquipped, setEquipped,
     setPassword, hasPassword, verifyPassword,
   };
 })();
