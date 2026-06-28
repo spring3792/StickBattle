@@ -127,7 +127,7 @@
   // game-code display, a join URL, a live "Players joined" grid (simulated
   // by progressively spawning fake players), and a big START GAME button
   // that pulses once at least 1 player has joined.
-  function HostingScreen({ settings, onSettingsChange, onClose, onStart }) {
+  function HostingScreen({ settings, onSettingsChange, onClose, onStart, onOpenProfile }) {
     // Mode + question-set pickers right inside the hosting screen so the host
     // doesn't need to bounce back to the hub to configure the game.
     const allModes = (D.MODES || []).filter(m => m.ready);
@@ -387,6 +387,13 @@
           }`}</style>
         </div>
 
+        {/* CHANGE YOUR LOOK — inline color/avatar swap, plus a button into the
+            full Profile modal. Players can re-skin while waiting. */}
+        {hostRole === 'player' && (
+          <div style={{ maxWidth:1100, width:'100%', margin:'14px auto 0' }}>
+            <LobbyLookPanel active={D.getUser()} onOpenProfile={onOpenProfile} />
+          </div>
+        )}
         {/* WARM-UP MINI-GAME — only for the host when they're going to PLAY.
             Spectators skip it (they're not playing the match anyway). */}
         {hostRole === 'player' && (
@@ -1451,91 +1458,158 @@
     );
   }
 
-  // Tap-the-target arcade — fills the dead time in the lobby. Targets pop in
-  // random spots and you have ~1.4s to click each. Combo counter + best score.
+  // REACTION BLITZ — a real challenge. Targets shrink as score climbs, the
+  // spawn window gets shorter, RED decoys mix in (clicking one costs a life),
+  // and three lives is all you get. Combo multiplier rewards streaks.
   function LobbyMiniGame({ profiles }) {
-    const [target, setTarget] = useState(null); // { x, y, born }
     const [score, setScore] = useState(0);
+    const [combo, setCombo] = useState(0);
+    const [lives, setLives] = useState(3);
     const [best, setBest] = useState(() => {
-      try { return parseInt(localStorage.getItem('sf_lobby_best_v1') || '0', 10); } catch(e){ return 0; }
+      try { return parseInt(localStorage.getItem('sf_lobby_best_v2') || '0', 10); } catch(e){ return 0; }
     });
+    const [orbs, setOrbs] = useState([]); // array of { id, x, y, born, life, kind: 'good'|'bad', r }
     const [running, setRunning] = useState(false);
-    const [missed, setMissed] = useState(false);
+    const [over, setOver] = useState(false);
     const areaRef = useRef(null);
+    const tickRef = useRef(null);
+    const seqRef = useRef(0);
+    // Spawn cadence speeds up with score; lifetime shrinks.
+    function difficulty() {
+      const interval = Math.max(280, 950 - score * 22);   // ms between spawns
+      const life     = Math.max(380, 1100 - score * 18);  // ms each target lasts
+      const startR   = Math.max(16, 30 - score * 0.3);    // start radius shrinks
+      const badRate  = Math.min(0.55, 0.20 + score * 0.012); // % decoys
+      return { interval, life, startR, badRate };
+    }
     useEffect(() => {
       if (!running) return;
+      let last = 0;
       let raf;
-      function spawn() {
-        const r = areaRef.current && areaRef.current.getBoundingClientRect();
-        if (!r) return;
-        const pad = 30;
-        const x = pad + Math.random() * (r.width - pad*2);
-        const y = pad + Math.random() * (r.height - pad*2);
-        setTarget({ x, y, born: Date.now() });
-      }
-      spawn();
-      function tick() {
+      function tick(t) {
         if (!running) return;
-        if (target && Date.now() - target.born > 1400) {
-          // miss
-          setRunning(false);
-          setMissed(true);
-          if (score > best) {
-            setBest(score);
-            try { localStorage.setItem('sf_lobby_best_v1', String(score)); } catch(e){}
+        // Expire orbs past their lifetime — missed good orbs cost a life.
+        setOrbs(prev => {
+          const kept = [];
+          let livesLost = 0;
+          for (const o of prev) {
+            if (t - o.born > o.life) {
+              if (o.kind === 'good') livesLost += 1;
+              continue;
+            }
+            kept.push(o);
           }
-          return;
+          if (livesLost > 0) {
+            setLives(l => Math.max(0, l - livesLost));
+            setCombo(0);
+          }
+          return kept;
+        });
+        const d = difficulty();
+        if (t - last > d.interval) {
+          last = t;
+          const r = areaRef.current && areaRef.current.getBoundingClientRect();
+          if (r) {
+            const pad = 36;
+            const newOrb = {
+              id: ++seqRef.current,
+              x: pad + Math.random() * (r.width - pad*2),
+              y: pad + Math.random() * (r.height - pad*2),
+              born: t, life: d.life,
+              kind: Math.random() < d.badRate ? 'bad' : 'good',
+              r: d.startR,
+            };
+            setOrbs(prev => prev.concat([newOrb]).slice(-5));
+          }
         }
         raf = requestAnimationFrame(tick);
+        tickRef.current = raf;
       }
       raf = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(raf);
-    }, [running, target, score, best]);
-    function start() { setScore(0); setMissed(false); setRunning(true); }
-    function tapTarget(e) {
+      return () => { if (raf) cancelAnimationFrame(raf); };
+    }, [running, score]);
+    // Lives → game over
+    useEffect(() => {
+      if (!running) return;
+      if (lives <= 0) {
+        setRunning(false);
+        setOver(true);
+        setOrbs([]);
+        if (score > best) {
+          setBest(score);
+          try { localStorage.setItem('sf_lobby_best_v2', String(score)); } catch(e){}
+        }
+      }
+    }, [lives, running, score, best]);
+    function start() {
+      setScore(0); setCombo(0); setLives(3); setOver(false); setOrbs([]);
+      setRunning(true);
+    }
+    function tapOrb(e, orb) {
       e.stopPropagation();
-      setScore(s => s + 1);
-      // Respawn immediately with new spot.
-      const r = areaRef.current && areaRef.current.getBoundingClientRect();
-      const pad = 30;
-      setTarget({
-        x: pad + Math.random() * ((r ? r.width : 300) - pad*2),
-        y: pad + Math.random() * ((r ? r.height : 160) - pad*2),
-        born: Date.now(),
-      });
+      if (orb.kind === 'bad') {
+        // Decoy → lose a life, reset combo.
+        setLives(l => Math.max(0, l - 1));
+        setCombo(0);
+      } else {
+        // Good orb — combo bonus + bigger score the smaller (faster) the orb.
+        const elapsed = performance.now() - orb.born;
+        const speedBonus = elapsed < orb.life * 0.4 ? 2 : 1;
+        const newCombo = combo + 1;
+        setCombo(newCombo);
+        const cm = newCombo >= 20 ? 5 : newCombo >= 10 ? 3 : newCombo >= 5 ? 2 : 1;
+        setScore(s => s + speedBonus * cm);
+      }
+      setOrbs(prev => prev.filter(o => o.id !== orb.id));
+    }
+    function nowProgress(orb) {
+      const t = performance.now();
+      return Math.min(1, (t - orb.born) / orb.life);
     }
     return (
       <div className="panel" style={{
         maxWidth: 1280, margin:'0 auto', width:'100%',
         padding:'12px 14px',
-        background:'linear-gradient(90deg, rgba(124,92,255,.10), transparent 70%)',
-        border:'1.5px solid rgba(124,92,255,.35)',
+        background:'linear-gradient(90deg, rgba(255,77,46,.10), transparent 70%)',
+        border:'1.5px solid rgba(255,154,60,.4)',
       }}>
         <div className="row" style={{ alignItems:'center', gap:12, marginBottom:8, flexWrap:'wrap' }}>
-          <div style={{ fontFamily:"'Bebas Neue'", fontSize:20, letterSpacing:'.1em', color:'#a07bff' }}>
-            ▸ WARM-UP · TAP THE TARGET
+          <div style={{ fontFamily:"'Bebas Neue'", fontSize:20, letterSpacing:'.1em', color:'#ff9a3c' }}>
+            ▸ WARM-UP · REACTION BLITZ
           </div>
           <div style={{ flex:1 }}/>
           <div style={{ fontSize:11, color:'var(--ink-3)' }}>
-            SCORE <strong style={{ color:'#fff', fontSize:14 }}>{score}</strong> · BEST <strong style={{ color:'#ffd76a', fontSize:14 }}>{best}</strong>
+            SCORE <strong style={{ color:'#fff', fontSize:14 }}>{score}</strong>
+            {' · '}COMBO <strong style={{ color:'#ffd76a', fontSize:14 }}>×{combo >= 20 ? 5 : combo >= 10 ? 3 : combo >= 5 ? 2 : 1}</strong>
+            {' · '}BEST <strong style={{ color:'#ffd76a', fontSize:14 }}>{best}</strong>
+          </div>
+          <div className="row" style={{ gap:3 }}>
+            {[0,1,2].map(i => (
+              <span key={i} style={{
+                width:14, height:14, borderRadius:'50%',
+                background: i < lives ? '#ff5b6e' : 'transparent',
+                border:`1.5px solid ${i < lives ? '#ff5b6e' : 'rgba(255,255,255,.18)'}`,
+                boxShadow: i < lives ? '0 0 6px #ff5b6e88' : 'none',
+              }}/>
+            ))}
           </div>
           {!running ? (
             <button className="btn sm" onClick={start}
-              style={{ background:'linear-gradient(180deg, #7c5cff, #5b3ed8)', color:'#fff' }}>
-              <Icon id="play" size={12}/> {missed ? 'Retry' : 'Start'}
+              style={{ background:'linear-gradient(180deg, #ff9a3c, #ff5b14)', color:'#fff' }}>
+              <Icon id="play" size={12}/> {over ? 'Retry' : 'Start'}
             </button>
           ) : (
-            <button className="btn sm ghost" onClick={() => { setRunning(false); setTarget(null); }}>
+            <button className="btn sm ghost" onClick={() => { setRunning(false); setOrbs([]); }}>
               <Icon id="x" size={11}/> Stop
             </button>
           )}
         </div>
         <div ref={areaRef}
           style={{
-            position:'relative', height:160, width:'100%',
+            position:'relative', height:200, width:'100%',
             borderRadius:10, overflow:'hidden',
-            background:'radial-gradient(circle at 50% 60%, rgba(124,92,255,.15), rgba(8,4,18,.5))',
-            border:'1.5px dashed rgba(124,92,255,.4)',
+            background:'radial-gradient(circle at 50% 60%, rgba(255,154,60,.10), rgba(8,4,18,.6))',
+            border:'1.5px dashed rgba(255,154,60,.4)',
             cursor: running ? 'crosshair' : 'default',
           }}>
           {!running && (
@@ -1543,19 +1617,99 @@
               position:'absolute', inset:0, display:'grid', placeItems:'center',
               color:'var(--ink-3)', fontSize:13, textAlign:'center', padding:14,
             }}>
-              {missed ? `Missed! Final score: ${score}. Hit Retry.` : 'Tap Start to warm up while you wait for players to ready up.'}
+              {over
+                ? `Game over! Score: ${score}${score >= best ? ' — NEW BEST!' : ''}. Hit Retry.`
+                : 'Click ORANGE orbs to score. Avoid RED decoys. Miss any orb = lose a life. 3 lives. Combo grows the multiplier.'}
             </div>
           )}
-          {running && target && (
-            <button onClick={tapTarget}
-              style={{
-                position:'absolute', left: target.x - 22, top: target.y - 22,
-                width:44, height:44, borderRadius:'50%', cursor:'crosshair',
-                background:'radial-gradient(circle at 30% 25%, #fff 0%, #ff5b6e 50%, #a01a2a 100%)',
-                border:'3px solid #fff', boxShadow:'0 0 16px #ff5b6e88',
-                animation:'tgtPulse .5s ease-in-out infinite alternate',
-              }}>
-              <style>{`@keyframes tgtPulse { from { transform: scale(.94); } to { transform: scale(1.05); } }`}</style>
+          {running && orbs.map(orb => {
+            const p = nowProgress(orb);
+            const r = orb.r * (1 - p * 0.55); // shrinks over time
+            const isBad = orb.kind === 'bad';
+            return (
+              <button key={orb.id} onClick={(e) => tapOrb(e, orb)}
+                style={{
+                  position:'absolute',
+                  left: orb.x - r, top: orb.y - r,
+                  width: r * 2, height: r * 2, borderRadius:'50%',
+                  cursor:'crosshair', padding:0,
+                  background: isBad
+                    ? 'radial-gradient(circle at 30% 25%, #fff 0%, #ff3b6e 50%, #5a0a1a 100%)'
+                    : 'radial-gradient(circle at 30% 25%, #fff 0%, #ff9a3c 50%, #7a3a0a 100%)',
+                  border:`2px solid ${isBad ? '#ffb0c0' : '#ffe2bd'}`,
+                  boxShadow: isBad
+                    ? `0 0 ${10 + (1 - p) * 16}px #ff3b6e88, 0 0 0 ${(1 - p) * 8}px rgba(255,59,110,.18)`
+                    : `0 0 ${10 + (1 - p) * 16}px #ff9a3c88, 0 0 0 ${(1 - p) * 8}px rgba(255,154,60,.18)`,
+                  // Pulse + spin = visual urgency
+                  animation: 'orbPulse .35s ease-in-out infinite alternate',
+                }}/>
+            );
+          })}
+          <style>{`@keyframes orbPulse { from { transform: scale(.92); } to { transform: scale(1.06); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // Inline cosmetic + color swap so the host can change their look while
+  // waiting in the hosting lobby. Avatar disc + color swatches + button that
+  // opens the full Profile modal for hat/outfit/face/trail.
+  function LobbyLookPanel({ active, onOpenProfile }) {
+    const [, force] = useState(0);
+    const cur = D.getPlayerColor(active) || '#5cf6ff';
+    const palette = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#fff','#1a0e22'];
+    function pickColor(c) {
+      D.setPlayerColor(active, c);
+      force(n => n + 1);
+    }
+    function pickAvatar(emoji) {
+      D.setAvatar(active, emoji);
+      force(n => n + 1);
+    }
+    const emojis = (D.AVATARS || []).slice(0, 10);
+    return (
+      <div className="panel" style={{
+        maxWidth: 1280, margin:'0 auto', width:'100%',
+        padding:'12px 16px',
+        background:'linear-gradient(90deg, rgba(160,123,255,.10), transparent 70%)',
+        border:'1.5px solid rgba(160,123,255,.4)',
+      }}>
+        <div className="row" style={{ alignItems:'center', gap:14, flexWrap:'wrap' }}>
+          <div style={{ fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.1em', color:'#a07bff' }}>
+            ▸ CHANGE YOUR LOOK
+          </div>
+          <ProfileAvatar name={active} size={44} />
+          {/* Color swatches */}
+          <div className="row" style={{ gap:4, flexWrap:'wrap' }}>
+            {palette.map(c => (
+              <button key={c} onClick={() => pickColor(c)}
+                title="Stickman color"
+                style={{
+                  width:24, height:24, borderRadius:'50%', background:c,
+                  border:`3px solid ${cur.toLowerCase() === c.toLowerCase() ? 'var(--fire-2)' : 'rgba(255,255,255,.15)'}`,
+                  cursor:'pointer',
+                }}/>
+            ))}
+          </div>
+          {/* Avatar emoji swap */}
+          <div className="row" style={{ gap:4, flexWrap:'wrap' }}>
+            {emojis.map(e => (
+              <button key={e} onClick={() => pickAvatar(e)}
+                title="Pick avatar emoji"
+                style={{
+                  width:30, height:30, fontSize:18, borderRadius:6,
+                  background: D.getAvatar(active) === e ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                  border:`1.5px solid ${D.getAvatar(active) === e ? 'var(--fire-2)' : 'var(--line)'}`,
+                  cursor:'pointer',
+                }}>{e}</button>
+            ))}
+          </div>
+          <div style={{ flex:1 }}/>
+          {onOpenProfile && (
+            <button className="btn sm" onClick={onOpenProfile}
+              style={{ background:'linear-gradient(180deg, #a07bff, #5b3ed8)', color:'#fff' }}>
+              <Icon id="pencil" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+              Full Customize
             </button>
           )}
         </div>
@@ -1631,6 +1785,8 @@
             </div>
           </div>
         )}
+        {/* QUICK LOOK SWAP — change color + avatar without opening Profile */}
+        <LobbyLookPanel active={D.getUser()} onOpenProfile={null} />
         {/* MINI-GAME while waiting — tap-the-target solo arcade */}
         <LobbyMiniGame profiles={profiles} />
         <div style={{ textAlign:'center', fontSize:11, color:'var(--ink-3)', letterSpacing:'.2em', marginTop:2 }}>
@@ -3032,6 +3188,7 @@
           <HostingScreen
             settings={settings}
             onSettingsChange={setSettings}
+            onOpenProfile={() => setShowProfile(true)}
             onClose={() => setShowHostingScreen(false)}
             onStart={(joinedPlayers, role) => {
               // Joined players slot into the party — they appear in friendly slots.
