@@ -2408,6 +2408,7 @@ window.StickFightGame = (function () {
   function tdUpgrade(state, t) {
     const td = state.td;
     if (!td || !t || t.level >= 3) return;
+    if (t.cpu) return; // CPU-owned tower — player can inspect but not modify.
     const cost = tdUpgradeCost(t);
     if (td.gold < cost) return;
     td.gold -= cost;
@@ -2475,6 +2476,7 @@ window.StickFightGame = (function () {
   function tdCastAbility(state, t) {
     const td = state.td;
     if (!td || !t) return false;
+    if (t.cpu) return false; // CPU-owned — inspect only.
     const kind = (td.towerKinds || []).find(k => k.id === t.kindId);
     if (!kind || !kind.ability) return false;
     if ((t.abilityCd || 0) > 0) return false;
@@ -2596,6 +2598,7 @@ window.StickFightGame = (function () {
   }
 
   function tdSellTower(state, t) {
+    if (t && t.cpu) return; // CPU-owned tower — player can't sell it.
     const td = state.td;
     if (!td || !t) return;
     const totalSpent = (t.baseCost || 60) + (t.level >= 2 ? tdUpgradeCost({ ...t, level:1 }) : 0)
@@ -4106,7 +4109,9 @@ window.StickFightGame = (function () {
       // ~10px above t.y because drawTowerStickman positions the ground tile at
       // t.y+12 and the head at t.y-26). The targeting code still uses (t.x,t.y)
       // so the ring shifts cosmetically only.
-      const ringY = t.y - 10;
+      // Visual stickman vertical span: head top (t.y-19) → feet (t.y+15).
+      // Geometric center is t.y-2; the body+head reads centred there.
+      const ringY = t.y - 2;
       ctx.fillStyle = 'rgba(91,255,138,.05)';
       ctx.beginPath(); ctx.arc(t.x, ringY, t.range, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 2;
@@ -4135,10 +4140,22 @@ window.StickFightGame = (function () {
       // Header bar
       ctx.fillStyle = 'rgba(255,154,60,.18)';
       ctx.fillRect(px, py, PW, 46);
-      // Header text — tower name + level
+      // Header text — tower name + level + CPU badge for opponent towers
       ctx.fillStyle = '#fff';
       ctx.font = "700 22px 'Bebas Neue'"; ctx.textAlign = 'left';
       ctx.fillText(`${(kind.name||'TOWER').toUpperCase()}`, px + 14, py + 24);
+      if (t.cpu) {
+        // CPU badge to the right of the name
+        const nameW = ctx.measureText((kind.name || 'TOWER').toUpperCase()).width;
+        const bx = px + 14 + nameW + 8, by = py + 10;
+        ctx.fillStyle = '#ff5b6e';
+        ctx.fillRect(bx, by, 40, 16);
+        ctx.fillStyle = '#fff';
+        ctx.font = "700 11px 'Rajdhani'";
+        ctx.textAlign = 'center';
+        ctx.fillText('CPU', bx + 20, by + 12);
+        ctx.textAlign = 'left';
+      }
       ctx.fillStyle = '#ffd76a';
       ctx.font = "700 14px 'Rajdhani'";
       ctx.fillText(`LEVEL ${t.level || 1} / 3`, px + 14, py + 41);
@@ -4173,19 +4190,29 @@ window.StickFightGame = (function () {
       wrapText(ctx, isMaxed ? 'Already at the highest level.' : (nextDesc || 'Improved stats'),
         px + 14, py + 138, PW - 28, 15);
 
-      // UPGRADE button (big)
-      ctx.fillStyle = canUpg ? '#ff9a3c' : (isMaxed ? 'rgba(91,255,138,.18)' : 'rgba(120,120,140,.25)');
+      // UPGRADE button (big) — disabled for CPU-owned towers
+      const isCpu = !!t.cpu;
+      const upBg = isCpu ? 'rgba(80,80,100,.25)'
+                         : (canUpg ? '#ff9a3c'
+                                   : (isMaxed ? 'rgba(91,255,138,.18)' : 'rgba(120,120,140,.25)'));
+      ctx.fillStyle = upBg;
       ctx.fillRect(upX, upY, upW, upH);
-      ctx.strokeStyle = canUpg ? '#ffd76a' : (isMaxed ? '#5bff8a' : 'rgba(255,255,255,.22)');
+      ctx.strokeStyle = isCpu ? 'rgba(255,255,255,.18)'
+                              : (canUpg ? '#ffd76a' : (isMaxed ? '#5bff8a' : 'rgba(255,255,255,.22)'));
       ctx.lineWidth = 2;
       ctx.strokeRect(upX, upY, upW, upH);
-      ctx.fillStyle = canUpg ? '#1a1a22' : (isMaxed ? '#5bff8a' : 'rgba(255,255,255,.55)');
+      ctx.fillStyle = isCpu ? 'rgba(255,255,255,.5)'
+                            : (canUpg ? '#1a1a22' : (isMaxed ? '#5bff8a' : 'rgba(255,255,255,.55)'));
       ctx.font = "700 24px 'Bebas Neue'"; ctx.textAlign = 'center';
-      ctx.fillText(isMaxed ? 'MAX LEVEL' : 'UPGRADE', upX + upW/2, upY + 26);
-      if (!isMaxed) {
+      ctx.fillText(isCpu ? 'CPU OWNED' : (isMaxed ? 'MAX LEVEL' : 'UPGRADE'), upX + upW/2, upY + 26);
+      if (!isCpu && !isMaxed) {
         ctx.font = "700 14px 'Rajdhani'";
         ctx.fillStyle = canUpg ? '#1a1a22' : 'rgba(255,255,255,.55)';
         ctx.fillText(`${upgCost} GOLD`, upX + upW/2, upY + 44);
+      } else if (isCpu) {
+        ctx.font = "600 11px 'Rajdhani'";
+        ctx.fillStyle = 'rgba(255,255,255,.55)';
+        ctx.fillText('Inspect only · not yours', upX + upW/2, upY + 44);
       }
 
       // ====== ABILITY button — special active power per tower kind ======
@@ -4255,7 +4282,7 @@ window.StickFightGame = (function () {
         if (Math.hypot(t.x - m.x, t.y - m.y) < 22) { hoverT = t; break; }
       }
       if (hoverT) {
-        const hRingY = hoverT.y - 10;
+        const hRingY = hoverT.y - 2;
         ctx.fillStyle = 'rgba(255,215,106,.06)';
         ctx.beginPath(); ctx.arc(hoverT.x, hRingY, hoverT.range, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(255,215,106,.8)'; ctx.lineWidth = 1.5;
@@ -4273,6 +4300,17 @@ window.StickFightGame = (function () {
       }
     }
 
+    // Enemies/projectiles render INSIDE a clip that excludes the selected
+    // tower's upgrade panel rect, so they don't appear to "pass through" it.
+    if (td.selectedTower) {
+      const { px, py, PW, PH } = tdUpgradePanelBtns();
+      ctx.save();
+      ctx.beginPath();
+      // Full canvas, then carve out the panel rect (even-odd).
+      ctx.rect(0, 0, W, H);
+      ctx.rect(px, py, PW, PH);
+      ctx.clip('evenodd');
+    }
     // Enemies drawn as side-profile stickmen that face their direction of
     // travel and stride properly along the path.
     for (const e of td.enemies) {
@@ -4577,6 +4615,9 @@ window.StickFightGame = (function () {
       }
       ctx.restore();
     }
+
+    // Close the upgrade-panel clip so HUD + popups can paint over it.
+    if (td.selectedTower) ctx.restore();
 
     // Floating damage numbers (above enemies)
     drawDamagePopups(ctx, state);
