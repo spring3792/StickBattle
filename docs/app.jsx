@@ -510,13 +510,10 @@
     // Hosting toggle — persists across reloads so the host stays "live" until
     // they explicitly stop. When false, the code is hidden and only Join shows.
     const [hosting, setHosting] = useState(() => {
-      // Default to TRUE — you "start with a lobby" so the code is immediately
-      // shareable without needing to press HOST GAME first. Persists the
-      // user's last explicit choice.
-      try {
-        const v = localStorage.getItem('sf_hosting_v1');
-        return v === null ? true : v === '1';
-      } catch(e) { return true; }
+      // Default OFF — only show the hosting code/View Lobby strip after the
+      // user explicitly presses HOST GAME. Persists the user's last choice.
+      try { return localStorage.getItem('sf_hosting_v1') === '1'; }
+      catch(e) { return false; }
     });
     function toggleHost() {
       const next = !hosting;
