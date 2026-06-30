@@ -402,10 +402,10 @@ window.StickFightGame = (function () {
           waveNum: 1, waveTimer: 60 * 3,
           enemies: [], towers: [], proj: [],
           spawnLeft: 9,                  // wave 1 already has ~9 enemies
-          maxWaves: 10,                  // longer campaign for the harder waves to land
+          maxWaves: 30,                  // long campaign — 30 waves to clear
           baseLost: false,
           endless: !!tdEndless,
-          maxWaves: tdEndless ? 9999 : 10,
+          maxWaves: tdEndless ? 9999 : 30,
           // Wave control: player must press "Start Wave" between waves so they
           // can place/upgrade at their own pace. `waveReady` = waiting for start.
           waveReady: true,
@@ -896,8 +896,13 @@ window.StickFightGame = (function () {
         }
       } else if (td.enemies.length === 0) {
         if (!td.endless && td.waveNum >= td.maxWaves) {
-          state.winner = human ? human.slot : 0;
-          state.endTimer = 140;
+          // Wave 30 cleared — instead of ending, offer endless mode.
+          // The player picks YES/NO via the on-canvas prompt; until they
+          // click, the match sits in this state with no new spawns.
+          if (!td.awaitingEndlessChoice && !td.endlessChosen) {
+            td.awaitingEndlessChoice = true;
+            spawnToast(state, `WAVE ${td.maxWaves} CLEARED! GO ENDLESS?`, '#ffd76a');
+          }
         } else if (!td.waveReady) {
           // Wave finished — move to next and idle until player clicks Start.
           td.waveNum++;
@@ -2342,8 +2347,40 @@ window.StickFightGame = (function () {
     const ssx = sx + sw + 8, ssy = 14;
     return { sx, sy, sw, sh, ssx, ssy, ssw, ssh };
   }
+  // Endless-prompt button rects (drawn centred when td.awaitingEndlessChoice).
+  function tdEndlessPromptRects() {
+    const pw = 480, ph = 200;
+    const px = (W - pw) / 2, py = (H - ph) / 2;
+    const bw = 180, bh = 56;
+    const gap = 20;
+    const byes = { x: px + pw/2 - bw - gap/2, y: py + 120, w: bw, h: bh };
+    const bno  = { x: px + pw/2 + gap/2,      y: py + 120, w: bw, h: bh };
+    return { px, py, pw, ph, byes, bno };
+  }
   function tdControlsClick(state, x, y) {
     const td = state.td; if (!td) return false;
+    // Endless-mode prompt — must answer before anything else interacts.
+    if (td.awaitingEndlessChoice) {
+      const { byes, bno } = tdEndlessPromptRects();
+      if (x >= byes.x && x < byes.x + byes.w && y >= byes.y && y < byes.y + byes.h) {
+        td.endless = true;
+        td.endlessChosen = true;
+        td.awaitingEndlessChoice = false;
+        td.maxWaves = 9999;
+        td.waveReady = true; // pause for player to ready up before wave 31
+        spawnToast(state, 'ENDLESS MODE ON', '#5cf6ff');
+        return true;
+      }
+      if (x >= bno.x && x < bno.x + bno.w && y >= bno.y && y < bno.y + bno.h) {
+        td.awaitingEndlessChoice = false;
+        td.endlessChosen = true;
+        const human = state.players.find(p => !p.isBot);
+        state.winner = human ? human.slot : 0;
+        state.endTimer = 140;
+        return true;
+      }
+      return true; // consume any other click while prompt is up
+    }
     const { sx, sy, sw, sh, ssx, ssy, ssw, ssh } = tdControlsRect();
     // Speed toggle
     if (x >= ssx && x < ssx + ssw && y >= ssy && y < ssy + ssh) {
@@ -4127,13 +4164,23 @@ window.StickFightGame = (function () {
       // ~10px above t.y because drawTowerStickman positions the ground tile at
       // t.y+12 and the head at t.y-26). The targeting code still uses (t.x,t.y)
       // so the ring shifts cosmetically only.
-      // Visual stickman vertical span: head top (t.y-19) → feet (t.y+15).
-      // Geometric center is t.y-2; the body+head reads centred there.
+      // Shift the ring to match the visual stickman + weapon centroid. Most
+      // towers extend a weapon out in the facing direction (bow, rifle, cannon
+      // barrel…), so the visible figure is offset 4-5px toward `face`. Mirror
+      // the same face-detection drawTowerStickman uses so the ring follows.
+      let ringFace = 1;
+      let bestD = Infinity, bx = null;
+      for (const e of td.enemies) {
+        const d = Math.hypot(e.x - t.x, e.y - (t.y - 14));
+        if (d <= t.range && d < bestD) { bestD = d; bx = e.x; }
+      }
+      if (bx !== null) ringFace = bx >= t.x ? 1 : -1;
+      const ringX = t.x + ringFace * 5;
       const ringY = t.y - 2;
       ctx.fillStyle = 'rgba(91,255,138,.05)';
-      ctx.beginPath(); ctx.arc(t.x, ringY, t.range, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ringX, ringY, t.range, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(t.x, ringY, t.range, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ringX, ringY, t.range, 0, Math.PI*2); ctx.stroke();
       // Pulsing selection ring around the tower itself
       const pulse = (Math.sin(state.frame * 0.18) + 1) * 0.5;
       ctx.strokeStyle = `rgba(91,255,138,${0.6 + pulse * 0.4})`;
@@ -4300,12 +4347,20 @@ window.StickFightGame = (function () {
         if (Math.hypot(t.x - m.x, t.y - m.y) < 22) { hoverT = t; break; }
       }
       if (hoverT) {
+        // Same face-direction shift as the selected-tower ring.
+        let hFace = 1, bestD = Infinity, bx = null;
+        for (const e of td.enemies) {
+          const d = Math.hypot(e.x - hoverT.x, e.y - (hoverT.y - 14));
+          if (d <= hoverT.range && d < bestD) { bestD = d; bx = e.x; }
+        }
+        if (bx !== null) hFace = bx >= hoverT.x ? 1 : -1;
+        const hRingX = hoverT.x + hFace * 5;
         const hRingY = hoverT.y - 2;
         ctx.fillStyle = 'rgba(255,215,106,.06)';
-        ctx.beginPath(); ctx.arc(hoverT.x, hRingY, hoverT.range, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hRingX, hRingY, hoverT.range, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(255,215,106,.8)'; ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
-        ctx.beginPath(); ctx.arc(hoverT.x, hRingY, hoverT.range, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hRingX, hRingY, hoverT.range, 0, Math.PI*2); ctx.stroke();
         ctx.setLineDash([]);
       } else {
         const ok = td.gold >= selKind.cost &&
@@ -4742,6 +4797,40 @@ window.StickFightGame = (function () {
       ctx.fillStyle = 'rgba(255,255,255,.55)';
       ctx.font = "500 9px 'Rajdhani'";
       ctx.fillText(k.desc.slice(0, 18), sx + 6, baseY + 56);
+    }
+    // ===== ENDLESS-MODE PROMPT (after wave 30) =====
+    if (td.awaitingEndlessChoice) {
+      const { px, py, pw, ph, byes, bno } = tdEndlessPromptRects();
+      // backdrop
+      ctx.fillStyle = 'rgba(2,4,12,.78)';
+      ctx.fillRect(0, 0, W, H);
+      // card
+      ctx.fillStyle = 'rgba(8,4,28,.97)';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+      ctx.strokeRect(px, py, pw, ph);
+      ctx.fillStyle = '#ffd76a';
+      ctx.font = "700 26px 'Bebas Neue'"; ctx.textAlign = 'center';
+      ctx.fillText(`WAVE ${td.maxWaves} CLEARED!`, px + pw/2, py + 50);
+      ctx.fillStyle = '#fff';
+      ctx.font = "600 16px 'Rajdhani'";
+      ctx.fillText('Continue into ENDLESS MODE?', px + pw/2, py + 86);
+      // YES button (green, go endless)
+      ctx.fillStyle = '#5bff8a';
+      ctx.fillRect(byes.x, byes.y, byes.w, byes.h);
+      ctx.strokeStyle = '#2a9a4a'; ctx.lineWidth = 2;
+      ctx.strokeRect(byes.x, byes.y, byes.w, byes.h);
+      ctx.fillStyle = '#001428';
+      ctx.font = "700 24px 'Bebas Neue'";
+      ctx.fillText('YES · ENDLESS', byes.x + byes.w/2, byes.y + 36);
+      // NO button (red, finish)
+      ctx.fillStyle = '#ff5b6e';
+      ctx.fillRect(bno.x, bno.y, bno.w, bno.h);
+      ctx.strokeStyle = '#a01a2a'; ctx.lineWidth = 2;
+      ctx.strokeRect(bno.x, bno.y, bno.w, bno.h);
+      ctx.fillStyle = '#fff';
+      ctx.font = "700 24px 'Bebas Neue'";
+      ctx.fillText('NO · FINISH', bno.x + bno.w/2, bno.y + 36);
     }
   }
 
