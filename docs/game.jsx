@@ -4164,23 +4164,12 @@ window.StickFightGame = (function () {
       // ~10px above t.y because drawTowerStickman positions the ground tile at
       // t.y+12 and the head at t.y-26). The targeting code still uses (t.x,t.y)
       // so the ring shifts cosmetically only.
-      // Shift the ring to match the visual stickman + weapon centroid. Most
-      // towers extend a weapon out in the facing direction (bow, rifle, cannon
-      // barrel…), so the visible figure is offset 4-5px toward `face`. Mirror
-      // the same face-detection drawTowerStickman uses so the ring follows.
-      let ringFace = 1;
-      let bestD = Infinity, bx = null;
-      for (const e of td.enemies) {
-        const d = Math.hypot(e.x - t.x, e.y - (t.y - 14));
-        if (d <= t.range && d < bestD) { bestD = d; bx = e.x; }
-      }
-      if (bx !== null) ringFace = bx >= t.x ? 1 : -1;
-      const ringX = t.x + ringFace * 5;
-      const ringY = t.y - 2;
+      // Ring centred exactly on the tower base point (t.x, t.y) — same anchor
+      // the targeting math uses. No cosmetic offsets.
       ctx.fillStyle = 'rgba(91,255,138,.05)';
-      ctx.beginPath(); ctx.arc(ringX, ringY, t.range, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(ringX, ringY, t.range, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.stroke();
       // Pulsing selection ring around the tower itself
       const pulse = (Math.sin(state.frame * 0.18) + 1) * 0.5;
       ctx.strokeStyle = `rgba(91,255,138,${0.6 + pulse * 0.4})`;
@@ -4347,20 +4336,11 @@ window.StickFightGame = (function () {
         if (Math.hypot(t.x - m.x, t.y - m.y) < 22) { hoverT = t; break; }
       }
       if (hoverT) {
-        // Same face-direction shift as the selected-tower ring.
-        let hFace = 1, bestD = Infinity, bx = null;
-        for (const e of td.enemies) {
-          const d = Math.hypot(e.x - hoverT.x, e.y - (hoverT.y - 14));
-          if (d <= hoverT.range && d < bestD) { bestD = d; bx = e.x; }
-        }
-        if (bx !== null) hFace = bx >= hoverT.x ? 1 : -1;
-        const hRingX = hoverT.x + hFace * 5;
-        const hRingY = hoverT.y - 2;
         ctx.fillStyle = 'rgba(255,215,106,.06)';
-        ctx.beginPath(); ctx.arc(hRingX, hRingY, hoverT.range, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hoverT.x, hoverT.y, hoverT.range, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = 'rgba(255,215,106,.8)'; ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
-        ctx.beginPath(); ctx.arc(hRingX, hRingY, hoverT.range, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hoverT.x, hoverT.y, hoverT.range, 0, Math.PI*2); ctx.stroke();
         ctx.setLineDash([]);
       } else {
         const ok = td.gold >= selKind.cost &&
