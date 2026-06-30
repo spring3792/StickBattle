@@ -4860,87 +4860,84 @@
     );
   }
 
-  // Admin abuse — chaos buttons. Most are visible-impact, some are pranks.
-  function AdminAbuseSection({ onChange, onCoinsChanged }) {
-    function freeCrate() {
-      const items = [
-        ...(D.HATS || []), ...(D.OUTFITS || []),
-        ...(D.FACES || []), ...(D.TRAILS || []),
-      ];
-      const unowned = items.filter(it => !D.isOwned('hat', it.id, it)
-        && !D.isOwned('outfit', it.id, it) && !D.isOwned('face', it.id, it) && !D.isOwned('trail', it.id, it));
-      const pool = unowned.length > 0 ? unowned : items;
-      const item = pool[Math.floor(Math.random() * pool.length)];
-      // Guess the kind by checking which list it came from
-      let kind = 'hat';
-      if ((D.OUTFITS || []).find(o => o.id === item.id)) kind = 'outfit';
-      else if ((D.FACES   || []).find(f => f.id === item.id)) kind = 'face';
-      else if ((D.TRAILS  || []).find(t => t.id === item.id)) kind = 'trail';
-      D.ownItem(kind, item.id);
-      alert(`Free crate! You got: ${item.name} (${kind})`);
-      onChange && onChange();
-    }
-    function maxAllProfiles() {
-      // Give every saved profile 1,000,000 coins.
+  // Grant section — pick a specific profile, set a coin amount, optionally
+  // toggle their admin flag. Replaces the wider "abuse" chaos row.
+  function AdminGrantSection({ onChange, onCoinsChanged }) {
+    const users = D.listUsers();
+    const [target, setTarget] = useState(users[0] || '');
+    const [amount, setAmount] = useState(1000);
+    const [makeAdmin, setMakeAdmin] = useState(false);
+    const [msg, setMsg] = useState('');
+    function grant() {
+      if (!target) return;
       const me = D.getUser();
-      const users = D.listUsers();
-      for (const u of users) {
-        D.setUser(u);
-        D.addCoins(1000000);
+      const n = Math.max(0, parseInt(amount, 10) || 0);
+      // Coins are namespaced per active user, so swap, add, swap back.
+      if (n > 0) {
+        D.setUser(target);
+        D.addCoins(n);
+        D.setUser(me);
       }
-      D.setUser(me);
-      alert(`Granted 1,000,000 coins to ${users.length} profile(s).`);
-      onCoinsChanged && onCoinsChanged();
-    }
-    function legendStatus() {
-      // The full package: max coins, unlock everything, mark display name.
-      D.addCoins(9999999);
-      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS]];
-      for (const [kind, list] of kinds) {
-        for (const item of (list || [])) D.ownItem(kind, item.id);
+      if (makeAdmin) {
+        // Admin is a global flag — there's only one admin slot. Grant means
+        // the target will be admin when they next log in. We flip it on now.
+        D.setAdmin(true);
       }
-      const dn = D.getDisplayName(D.getUser());
-      if (dn && !/^👑/.test(dn)) D.setDisplayName(D.getUser(), `👑 ${dn}`);
-      alert('LEGEND STATUS GRANTED — max coins, all cosmetics, crown title.');
-      onChange && onChange();
-      onCoinsChanged && onCoinsChanged();
-    }
-    function chaosMode() {
-      // Random gift across all profiles + ban a fake name to spice things up.
-      const fakes = ['Cheater42', 'BotKing', 'LoLoL', 'SmurfMaster', 'RageQuit'];
-      const target = fakes[Math.floor(Math.random() * fakes.length)];
-      D.addBan(target);
-      D.addCoins(Math.floor(Math.random() * 5000) + 500);
-      alert(`Chaos! Banned "${target}" and dropped random coins on you.`);
+      const parts = [];
+      if (n > 0) parts.push(`+${n.toLocaleString()} coins`);
+      if (makeAdmin) parts.push('admin');
+      setMsg(`Granted ${parts.join(' + ') || 'nothing'} to ${target}.`);
+      setTimeout(() => setMsg(''), 2000);
       onChange && onChange();
       onCoinsChanged && onCoinsChanged();
     }
     return (
       <div style={{ padding:'0 18px 12px' }}>
-        <div style={{ fontSize:11, letterSpacing:'.2em', color:'#ff8a9a', marginBottom:6 }}>
-          ⚡ ADMIN ABUSE
+        <div style={{ fontSize:11, letterSpacing:'.2em', color:'var(--ink-3)', marginBottom:6 }}>
+          GRANT TO PLAYER
         </div>
-        <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
-          <button className="btn sm" onClick={freeCrate}
-            style={{ background:'linear-gradient(180deg, #ff9a3c, #ff5b14)', color:'#fff' }}>
-            🎁 Free Crate
-          </button>
-          <button className="btn sm" onClick={maxAllProfiles}
-            style={{ background:'linear-gradient(180deg, #ffd76a, #ff9a3c)', color:'#1a0e22', fontWeight:800 }}>
-            💰 +1M to ALL profiles
-          </button>
-          <button className="btn sm" onClick={legendStatus}
-            style={{ background:'linear-gradient(180deg, #a07bff, #5b3ed8)', color:'#fff' }}>
-            👑 Legend Status
-          </button>
-          <button className="btn sm" onClick={chaosMode}
-            style={{ background:'linear-gradient(180deg, #ff5b6e, #a01a2a)', color:'#fff' }}>
-            🌀 Chaos Roll
+        <div className="row" style={{ gap:6, flexWrap:'wrap', alignItems:'center' }}>
+          {/* Profile picker */}
+          <select value={target} onChange={e => setTarget(e.target.value)}
+            style={{
+              padding:'7px 10px', borderRadius:6,
+              background:'rgba(0,0,0,.45)', color:'#fff',
+              border:'1.5px solid var(--line-2)', fontFamily:'inherit',
+              minWidth:140,
+            }}>
+            {users.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+          {/* Coin amount */}
+          <input type="number" min="0" step="100" value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="Coins"
+            style={{
+              width:120, padding:'7px 10px', borderRadius:6,
+              background:'rgba(0,0,0,.45)', color:'#ffd76a',
+              border:'1.5px solid var(--line-2)',
+              fontFamily:"'Bebas Neue'", letterSpacing:'.1em', fontSize:14,
+            }}/>
+          {/* Admin toggle */}
+          <label style={{
+            display:'inline-flex', alignItems:'center', gap:6,
+            padding:'7px 10px', borderRadius:6,
+            background: makeAdmin ? 'rgba(255,91,110,.15)' : 'rgba(0,0,0,.3)',
+            border: `1.5px solid ${makeAdmin ? '#ff5b6e' : 'var(--line-2)'}`,
+            cursor:'pointer', fontSize:12, color: makeAdmin ? '#ff8a9a' : 'var(--ink-2)',
+          }}>
+            <input type="checkbox" checked={makeAdmin}
+              onChange={e => setMakeAdmin(e.target.checked)}/>
+            Make admin
+          </label>
+          <button className="btn sm" onClick={grant}
+            style={{ background:'linear-gradient(180deg, #5bff8a, #2a9a4a)', color:'#001428', fontWeight:800 }}>
+            <Icon id="check" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+            Grant
           </button>
         </div>
-        <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
-          Free Crate gives a random cosmetic. Legend = max coins + unlock all + 👑 title.
-        </div>
+        {msg && (
+          <div style={{ fontSize:11, color:'#5bff8a', marginTop:6 }}>{msg}</div>
+        )}
       </div>
     );
   }
@@ -5047,8 +5044,8 @@
           </div>
           {/* MODERATION — bans + kicks */}
           <AdminBansSection onChange={() => force(t => t + 1)} />
-          {/* ADMIN ABUSE — chaos powers */}
-          <AdminAbuseSection onChange={() => force(t => t + 1)} onCoinsChanged={onCoinsChanged} />
+          {/* GRANT — give a specific player a custom amount + optional admin */}
+          <AdminGrantSection onChange={() => force(t => t + 1)} onCoinsChanged={onCoinsChanged} />
           {/* DANGER ZONE */}
           <div style={{
             padding:'12px 18px',
