@@ -347,6 +347,14 @@ window.StickFightGame = (function () {
         state.wave = { killCount: 0 };
       }
 
+      // ----- COIN RUSH: gold coins fall from the sky. Touch one to score.
+      // First to settings.target wins. No damage taken/dealt — pure scramble.
+      if (state.mode === 'coins') {
+        state.coinDrops = [];
+        state.coinSpawn = 30;
+        for (const p of state.players) { p.hp = p.maxHp || 100; }
+      }
+
       // ----- MINI GOLF (TRUE TOP-DOWN) -----
       // Replaces side-scroller. Course is the entire canvas. Click+drag from
       // the ball to set direction and power; release to swing. Walls bounce
@@ -707,6 +715,51 @@ window.StickFightGame = (function () {
             }
           }
         }
+      }
+    }
+
+    // ---- COIN RUSH ----
+    if (state.mode === 'coins' && state.winner === null) {
+      state.coinSpawn = (state.coinSpawn || 0) - 1;
+      if (state.coinSpawn <= 0) {
+        state.coinSpawn = 24 + Math.floor(Math.random() * 30);
+        state.coinDrops = state.coinDrops || [];
+        state.coinDrops.push({
+          x: 40 + Math.random() * (W - 80),
+          y: -20,
+          vy: 0.6 + Math.random() * 0.6,
+          spin: Math.random() * Math.PI * 2,
+        });
+      }
+      const target = state.players[0]?._target || 5;
+      for (let i = (state.coinDrops || []).length - 1; i >= 0; i--) {
+        const c = state.coinDrops[i];
+        c.vy = Math.min(5, (c.vy || 0) + 0.18);
+        c.y += c.vy;
+        c.spin = (c.spin || 0) + 0.18;
+        // Ground bounce — keeps coins reachable instead of vanishing.
+        if (c.y > GROUND_Y - 8) { c.y = GROUND_Y - 8; c.vy *= -0.45; if (Math.abs(c.vy) < 0.5) c.vy = 0; }
+        // Despawn after ~10s on the floor so the field doesn't fill up.
+        c.life = (c.life || 0) + 1;
+        if (c.life > 600) { state.coinDrops.splice(i, 1); continue; }
+        // Player pickup — any player whose hitbox center is within 22px.
+        let picked = false;
+        for (const p of state.players) {
+          if (!p.alive) continue;
+          const dx = p.x - c.x, dy = (p.y - 24) - c.y;
+          if (dx*dx + dy*dy <= 26*26) {
+            p.score = (p.score || 0) + 1;
+            spawnPopup(state, c.x, c.y, '+1', '#ffd76a');
+            spawnStarBurst(state, c.x, c.y, '#ffd76a');
+            if (p.score >= target) {
+              state.winner = p.slot;
+              state.endTimer = 140;
+            }
+            picked = true;
+            break;
+          }
+        }
+        if (picked) state.coinDrops.splice(i, 1);
       }
     }
 
@@ -1755,7 +1808,7 @@ window.StickFightGame = (function () {
 
   function damagePlayer(state, p, dmg, kbx, kby, byIdx) {
     // No-damage modes: parkour/golf/td silently ignore damage from other players
-    if (state.mode === 'parkour' || state.mode === 'golf' || state.mode === 'td') {
+    if (state.mode === 'parkour' || state.mode === 'golf' || state.mode === 'td' || state.mode === 'coins') {
       // Allow lava/saw hazards via byIdx === null still (handled elsewhere).
       // Player-to-player damage: ignore.
       if (byIdx !== null && byIdx !== undefined) return;
@@ -2763,6 +2816,30 @@ window.StickFightGame = (function () {
     drawHazards(ctx, state);
 
     // Mode-specific overlays (parkour flag, golf ball + goal, td enemies + base)
+    // ----- COIN RUSH: render falling gold coins -----
+    if (state.mode === 'coins' && state.coinDrops) {
+      for (const c of state.coinDrops) {
+        // Drop shadow
+        ctx.fillStyle = 'rgba(0,0,0,.3)';
+        ctx.beginPath(); ctx.ellipse(c.x, GROUND_Y - 4, 10, 3, 0, 0, Math.PI * 2); ctx.fill();
+        // Coin with spin (compressed width via cos(spin))
+        const w = Math.max(4, 11 * Math.abs(Math.cos(c.spin || 0)));
+        const g = ctx.createLinearGradient(c.x - w, c.y - 12, c.x + w, c.y + 12);
+        g.addColorStop(0, '#fff2a6');
+        g.addColorStop(0.5, '#ffd76a');
+        g.addColorStop(1, '#a07a14');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(c.x, c.y, w, 12, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#7a5a14'; ctx.lineWidth = 1.5; ctx.stroke();
+        // $ glyph on top, only visible when the coin is mostly face-on
+        if (w > 6) {
+          ctx.fillStyle = '#7a5a14';
+          ctx.font = "700 14px 'Bebas Neue'";
+          ctx.textAlign = 'center';
+          ctx.fillText('$', c.x, c.y + 5);
+        }
+      }
+    }
     if (state.mode === 'parkour' && state.finish) {
       const f = state.finish;
       // Flag pole
