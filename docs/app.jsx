@@ -2935,6 +2935,7 @@
     const [error, setError] = useState('');
     function submit() {
       if (!pickedName) { setError('Pick a profile'); return; }
+      if (D.isBanned && D.isBanned(pickedName)) { setError(`"${pickedName}" is banned.`); return; }
       const ok = D.verifyPassword(pickedName, password);
       if (!ok) { setError('Wrong password'); return; }
       D.setUser(pickedName);
@@ -3017,6 +3018,7 @@
     function submit() {
       const clean = name.trim().slice(0, 20);
       if (!clean) { setError('Pick a username'); return; }
+      if (D.isBanned && D.isBanned(clean)) { setError('You are banned. Pick a different name.'); return; }
       if (D.userExists(clean)) { setError('Username already taken'); return; }
       D.setUser(clean);                     // also writes it into the list
       if (password) D.setPassword(clean, password);
@@ -4765,6 +4767,184 @@
     );
   }
 
+  // Ban/kick controls — manage the banned-name list.
+  function AdminBansSection({ onChange }) {
+    const [input, setInput] = useState('');
+    const [tick, force] = useState(0);
+    const banned = D.getBanned ? D.getBanned() : [];
+    const users = D.listUsers();
+    function banName(n) {
+      if (!n) return;
+      if (D.addBan(n)) { setInput(''); force(t => t + 1); onChange && onChange(); }
+    }
+    function unban(n) {
+      D.removeBan(n);
+      force(t => t + 1);
+      onChange && onChange();
+    }
+    function kick(name) {
+      // "Kick" = remove their profile entirely so they can't log back in
+      // under that name (still rejoin under a new one).
+      if (!confirm(`Kick "${name}"? Their profile data will be deleted.`)) return;
+      D.deleteUser && D.deleteUser(name);
+      force(t => t + 1);
+      onChange && onChange();
+    }
+    return (
+      <div style={{ padding:'0 18px 12px' }}>
+        <div style={{ fontSize:11, letterSpacing:'.2em', color:'var(--ink-3)', marginBottom:6 }}>MODERATION</div>
+        {/* Ban input */}
+        <div className="row" style={{ gap:6, marginBottom:8 }}>
+          <input type="text" placeholder="Name to ban…"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && banName(input.trim())}
+            style={{
+              flex:1, padding:'8px 12px', fontFamily:"'Bebas Neue'",
+              letterSpacing:'.1em', fontSize:14,
+              background:'rgba(0,0,0,.4)', color:'#fff',
+              border:'1.5px solid var(--line-2)', borderRadius:6,
+            }}/>
+          <button className="btn sm" onClick={() => banName(input.trim())}
+            style={{ background:'linear-gradient(180deg, #ff5b6e, #a01a2a)', color:'#fff' }}>
+            BAN
+          </button>
+        </div>
+        {/* Kick + ban any existing profile */}
+        {users.length > 0 && (
+          <div style={{ marginBottom:8 }}>
+            <div style={{ fontSize:10, color:'var(--ink-3)', marginBottom:4 }}>Existing profiles</div>
+            <div className="row" style={{ gap:4, flexWrap:'wrap' }}>
+              {users.map(u => (
+                <div key={u} className="row" style={{
+                  gap:4, padding:'4px 8px', borderRadius:6,
+                  background:'rgba(255,255,255,.04)', border:'1px solid var(--line)',
+                  alignItems:'center',
+                }}>
+                  <span style={{ fontWeight:700, fontSize:12, color:'#fff' }}>{u}</span>
+                  <button className="btn sm ghost" onClick={() => banName(u)}
+                    style={{ padding:'2px 6px', fontSize:10, color:'#ff8a9a', borderColor:'rgba(255,91,110,.4)' }}>
+                    Ban
+                  </button>
+                  <button className="btn sm ghost" onClick={() => kick(u)}
+                    style={{ padding:'2px 6px', fontSize:10, color:'#ffd76a', borderColor:'rgba(255,215,106,.4)' }}>
+                    Kick
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Active ban list */}
+        {banned.length > 0 && (
+          <div>
+            <div style={{ fontSize:10, color:'#ff8a9a', marginBottom:4 }}>Banned ({banned.length})</div>
+            <div className="row" style={{ gap:4, flexWrap:'wrap' }}>
+              {banned.map(b => (
+                <span key={b} className="pill" style={{
+                  background:'rgba(255,91,110,.18)', border:'1px solid #ff5b6e',
+                  color:'#ff8a9a', fontWeight:700,
+                }}>
+                  {b}
+                  <button onClick={() => unban(b)} title="Unban"
+                    style={{
+                      marginLeft:4, background:'none', border:'none', color:'#fff',
+                      cursor:'pointer', fontWeight:900, fontSize:13, padding:0,
+                    }}>×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Admin abuse — chaos buttons. Most are visible-impact, some are pranks.
+  function AdminAbuseSection({ onChange, onCoinsChanged }) {
+    function freeCrate() {
+      const items = [
+        ...(D.HATS || []), ...(D.OUTFITS || []),
+        ...(D.FACES || []), ...(D.TRAILS || []),
+      ];
+      const unowned = items.filter(it => !D.isOwned('hat', it.id, it)
+        && !D.isOwned('outfit', it.id, it) && !D.isOwned('face', it.id, it) && !D.isOwned('trail', it.id, it));
+      const pool = unowned.length > 0 ? unowned : items;
+      const item = pool[Math.floor(Math.random() * pool.length)];
+      // Guess the kind by checking which list it came from
+      let kind = 'hat';
+      if ((D.OUTFITS || []).find(o => o.id === item.id)) kind = 'outfit';
+      else if ((D.FACES   || []).find(f => f.id === item.id)) kind = 'face';
+      else if ((D.TRAILS  || []).find(t => t.id === item.id)) kind = 'trail';
+      D.ownItem(kind, item.id);
+      alert(`Free crate! You got: ${item.name} (${kind})`);
+      onChange && onChange();
+    }
+    function maxAllProfiles() {
+      // Give every saved profile 1,000,000 coins.
+      const me = D.getUser();
+      const users = D.listUsers();
+      for (const u of users) {
+        D.setUser(u);
+        D.addCoins(1000000);
+      }
+      D.setUser(me);
+      alert(`Granted 1,000,000 coins to ${users.length} profile(s).`);
+      onCoinsChanged && onCoinsChanged();
+    }
+    function legendStatus() {
+      // The full package: max coins, unlock everything, mark display name.
+      D.addCoins(9999999);
+      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS]];
+      for (const [kind, list] of kinds) {
+        for (const item of (list || [])) D.ownItem(kind, item.id);
+      }
+      const dn = D.getDisplayName(D.getUser());
+      if (dn && !/^👑/.test(dn)) D.setDisplayName(D.getUser(), `👑 ${dn}`);
+      alert('LEGEND STATUS GRANTED — max coins, all cosmetics, crown title.');
+      onChange && onChange();
+      onCoinsChanged && onCoinsChanged();
+    }
+    function chaosMode() {
+      // Random gift across all profiles + ban a fake name to spice things up.
+      const fakes = ['Cheater42', 'BotKing', 'LoLoL', 'SmurfMaster', 'RageQuit'];
+      const target = fakes[Math.floor(Math.random() * fakes.length)];
+      D.addBan(target);
+      D.addCoins(Math.floor(Math.random() * 5000) + 500);
+      alert(`Chaos! Banned "${target}" and dropped random coins on you.`);
+      onChange && onChange();
+      onCoinsChanged && onCoinsChanged();
+    }
+    return (
+      <div style={{ padding:'0 18px 12px' }}>
+        <div style={{ fontSize:11, letterSpacing:'.2em', color:'#ff8a9a', marginBottom:6 }}>
+          ⚡ ADMIN ABUSE
+        </div>
+        <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
+          <button className="btn sm" onClick={freeCrate}
+            style={{ background:'linear-gradient(180deg, #ff9a3c, #ff5b14)', color:'#fff' }}>
+            🎁 Free Crate
+          </button>
+          <button className="btn sm" onClick={maxAllProfiles}
+            style={{ background:'linear-gradient(180deg, #ffd76a, #ff9a3c)', color:'#1a0e22', fontWeight:800 }}>
+            💰 +1M to ALL profiles
+          </button>
+          <button className="btn sm" onClick={legendStatus}
+            style={{ background:'linear-gradient(180deg, #a07bff, #5b3ed8)', color:'#fff' }}>
+            👑 Legend Status
+          </button>
+          <button className="btn sm" onClick={chaosMode}
+            style={{ background:'linear-gradient(180deg, #ff5b6e, #a01a2a)', color:'#fff' }}>
+            🌀 Chaos Roll
+          </button>
+        </div>
+        <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
+          Free Crate gives a random cosmetic. Legend = max coins + unlock all + 👑 title.
+        </div>
+      </div>
+    );
+  }
+
   // Admin panel — unlocked by redeeming the ADMIN code. Lets the user
   // grant coins, unlock all cosmetics, reset progress, and toggle admin off.
   function AdminPanel({ onClose, onCoinsChanged }) {
@@ -4865,6 +5045,10 @@
               Unlock ALL hats / outfits / faces / trails
             </button>
           </div>
+          {/* MODERATION — bans + kicks */}
+          <AdminBansSection onChange={() => force(t => t + 1)} />
+          {/* ADMIN ABUSE — chaos powers */}
+          <AdminAbuseSection onChange={() => force(t => t + 1)} onCoinsChanged={onCoinsChanged} />
           {/* DANGER ZONE */}
           <div style={{
             padding:'12px 18px',

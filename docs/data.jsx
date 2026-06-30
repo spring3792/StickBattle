@@ -282,10 +282,34 @@ window.GameData = (function () {
   };
   const LS_REDEEMED = 'sf_redeemed_v1';
   const LS_ADMIN    = 'sf_admin_v1';
+  const LS_BANNED   = 'sf_banned_v1';
   function isAdmin() { return localStorage.getItem(LS_ADMIN) === '1'; }
   function setAdmin(on) {
     if (on) localStorage.setItem(LS_ADMIN, '1');
     else localStorage.removeItem(LS_ADMIN);
+  }
+  // Ban list — case-insensitive name strings. Blocks signup and forces logout
+  // if a banned user is already active.
+  function getBanned() {
+    try { return JSON.parse(localStorage.getItem(LS_BANNED) || '[]'); }
+    catch (e) { return []; }
+  }
+  function isBanned(name) {
+    const n = (name || '').trim().toLowerCase();
+    return !!n && getBanned().some(b => b.toLowerCase() === n);
+  }
+  function addBan(name) {
+    const clean = (name || '').trim().slice(0, 24);
+    if (!clean || isBanned(clean)) return false;
+    const list = getBanned();
+    list.push(clean);
+    localStorage.setItem(LS_BANNED, JSON.stringify(list));
+    return true;
+  }
+  function removeBan(name) {
+    const n = (name || '').trim().toLowerCase();
+    const list = getBanned().filter(b => b.toLowerCase() !== n);
+    localStorage.setItem(LS_BANNED, JSON.stringify(list));
   }
   function getRedeemed() {
     try { return new Set(JSON.parse(localStorage.getItem(ns(LS_REDEEMED)) || '[]')); }
@@ -655,6 +679,7 @@ window.GameData = (function () {
     rollCrate,
     // codes
     CODES, redeemCode, isAdmin, setAdmin,
+    getBanned, isBanned, addBan, removeBan,
     // friends + trading
     getFriends, addFriend, removeFriend, friendIsOnline,
     getTrades, executeTrade,
