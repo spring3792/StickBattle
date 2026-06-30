@@ -512,13 +512,13 @@
     const [hosting, setHosting] = useState(() => {
       // Default OFF — only show the hosting code/View Lobby strip after the
       // user explicitly presses HOST GAME. Persists the user's last choice.
-      try { return localStorage.getItem('sf_hosting_v1') === '1'; }
+      try { return localStorage.getItem('sf_hosting_v2') === '1'; }
       catch(e) { return false; }
     });
     function toggleHost() {
       const next = !hosting;
       setHosting(next);
-      try { localStorage.setItem('sf_hosting_v1', next ? '1' : '0'); } catch(e){}
+      try { localStorage.setItem('sf_hosting_v2', next ? '1' : '0'); } catch(e){}
       if (next && onOpenHostingScreen) onOpenHostingScreen();
       setShowJoined(next ? 'Hosting started! Share your code.' : 'Stopped hosting');
       setTimeout(() => setShowJoined(null), 1600);
