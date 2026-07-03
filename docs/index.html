@@ -104,6 +104,11 @@
   .hat-tile.on{border-color:var(--fire-1);box-shadow:0 0 0 3px rgba(255,77,46,.25)}
   .color-tile{width:36px;height:36px;border-radius:8px;cursor:pointer;border:3px solid transparent}
   .color-tile.on{border-color:#fff}
+  /* Launch layout — sidebar+main on desktop, single column below 900px. */
+  @media (max-width: 900px) {
+    .launch-body-grid { grid-template-columns: 1fr !important; }
+    .launch-body-grid > div:first-child { position: static !important; }
+  }
 </style>
 </head>
 <body>
@@ -114,12 +119,12 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
-<script type="text/babel" src="icons.jsx?v=92"></script>
-<script type="text/babel" src="cosmetics.jsx?v=92"></script>
-<script type="text/babel" src="questions.jsx?v=92"></script>
-<script type="text/babel" src="data.jsx?v=92"></script>
-<script type="text/babel" src="game.jsx?v=92"></script>
-<script type="text/babel" src="app.jsx?v=92"></script>
+<script type="text/babel" src="icons.jsx?v=93"></script>
+<script type="text/babel" src="cosmetics.jsx?v=93"></script>
+<script type="text/babel" src="questions.jsx?v=93"></script>
+<script type="text/babel" src="data.jsx?v=93"></script>
+<script type="text/babel" src="game.jsx?v=93"></script>
+<script type="text/babel" src="app.jsx?v=93"></script>
 
 </body>
 </html>

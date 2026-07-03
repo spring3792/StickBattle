@@ -818,8 +818,11 @@
         <span>{label}</span>
       </button>
     );
+    // Sidebar/main split — on desktop the ACTION zone (PLAY + Host/Join)
+    // pins to the left and the CUSTOMIZATION grid (modes + options) fills
+    // the right. On narrow viewports it stacks (grid-template-columns 1fr).
     return (
-      <div style={{ maxWidth:1100, margin:'0 auto', display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ maxWidth:1200, margin:'0 auto', display:'flex', flexDirection:'column', gap:14 }}>
         {/* HEADER ROW: title left, chips right */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
@@ -893,6 +896,17 @@
           </button>
         </div>
 
+        {/* ==== TWO-COLUMN BODY: sticky action zone (left) + customization (right) ==== */}
+        <div style={{
+          display:'grid',
+          gridTemplateColumns:'minmax(0, 360px) minmax(0, 1fr)',
+          gap:14,
+          alignItems:'start',
+        }} className="launch-body-grid">
+
+        {/* LEFT: sticky action stack (hero + host/join) */}
+        <div style={{ display:'flex', flexDirection:'column', gap:12, position:'sticky', top:12 }}>
+
         {/* Active PARTY / CHALLENGE banner — only when one or both are set */}
         {((party && party.length > 0) || challengeFriend) && (
           <div className="panel" style={{
@@ -955,31 +969,34 @@
           padding:'18px 22px',
           background:`linear-gradient(135deg, rgba(255,77,46,.15), transparent 60%), var(--card-bg)`,
           border:'2px solid rgba(255,154,60,.45)',
-          display:'flex', alignItems:'center', gap:18, position:'relative', overflow:'hidden',
+          display:'flex', flexDirection:'column', gap:14, position:'relative', overflow:'hidden',
         }}>
-          {/* decorative stickman silhouette */}
-          <svg viewBox="0 0 80 100" width="60" height="80" style={{ opacity:.85, flexShrink:0 }}>
-            <circle cx="40" cy="22" r="11" fill="none" stroke="var(--fire-3)" strokeWidth="3.5"/>
-            <line x1="40" y1="33" x2="40" y2="62" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
-            <line x1="40" y1="42" x2="22" y2="55" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
-            <line x1="40" y1="42" x2="58" y2="48" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
-            <line x1="40" y1="62" x2="26" y2="86" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
-            <line x1="40" y1="62" x2="54" y2="86" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
-          </svg>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div className="mono" style={{ fontSize:10, letterSpacing:'.22em', color:'var(--ink-3)', textTransform:'uppercase' }}>
-              Selected Mode
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            {/* decorative stickman silhouette */}
+            <svg viewBox="0 0 80 100" width="56" height="72" style={{ opacity:.85, flexShrink:0 }}>
+              <circle cx="40" cy="22" r="11" fill="none" stroke="var(--fire-3)" strokeWidth="3.5"/>
+              <line x1="40" y1="33" x2="40" y2="62" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
+              <line x1="40" y1="42" x2="22" y2="55" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
+              <line x1="40" y1="42" x2="58" y2="48" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
+              <line x1="40" y1="62" x2="26" y2="86" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
+              <line x1="40" y1="62" x2="54" y2="86" stroke="var(--fire-3)" strokeWidth="3.5" strokeLinecap="round"/>
+            </svg>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div className="mono" style={{ fontSize:10, letterSpacing:'.22em', color:'var(--ink-3)', textTransform:'uppercase' }}>
+                Selected Mode
+              </div>
+              <div style={{
+                fontFamily:"'Bebas Neue', sans-serif",
+                fontSize:'clamp(24px,3vw,38px)', lineHeight:1, letterSpacing:'.04em',
+                margin:'4px 0 6px',
+                color:'var(--fire-3)',
+                textShadow:'0 2px 0 #6c1a0e',
+              }}>{selectedMode.name.toUpperCase()}</div>
+              <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.35 }}>{selectedMode.desc}</div>
             </div>
-            <div style={{
-              fontFamily:"'Bebas Neue', sans-serif",
-              fontSize:'clamp(28px,4vw,44px)', lineHeight:1, letterSpacing:'.04em',
-              margin:'4px 0 8px',
-              color:'var(--fire-3)',
-              textShadow:'0 2px 0 #6c1a0e',
-            }}>{selectedMode.name.toUpperCase()}</div>
-            <div style={{ fontSize:14, color:'var(--ink-2)', lineHeight:1.4 }}>{selectedMode.desc}</div>
           </div>
-          <button className="btn big glow" onClick={onPlay} style={{ flexShrink:0 }}>
+          {/* Full-width PLAY button so it doesn't overlap the mode text. */}
+          <button className="btn big glow" onClick={onPlay} style={{ width:'100%' }}>
             <Icon id="play" size={22} style={{verticalAlign:'middle', marginRight:10}}/>
             PLAY
           </button>
@@ -988,6 +1005,11 @@
 
         {/* SIMPLE HOST/JOIN CARD — secondary now, sits below the PLAY hero */}
         <HostJoinCard playMode={playMode} party={party} onOpenHostingScreen={onOpenHostingScreen} />
+
+        </div>{/* /LEFT column */}
+
+        {/* RIGHT: customization column (modes + setup grid) */}
+        <div style={{ display:'flex', flexDirection:'column', gap:12, minWidth:0 }}>
 
         {/* TWO-COLUMN: modes (left) + setup (right) */}
         <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.4fr) minmax(0, 1fr)', gap:14 }}>
@@ -1260,6 +1282,10 @@
             </div>
           </div>
         </div>
+
+        </div>{/* /RIGHT column */}
+
+        </div>{/* /TWO-COLUMN body grid */}
 
         <div style={{ opacity:.45, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', textAlign:'center', marginTop:6 }}>
           No weapons  ·  Cosmetics only  ·  First to {settings.target}  ·  {D.STAGES.length} stages
