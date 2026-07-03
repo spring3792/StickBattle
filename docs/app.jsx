@@ -2953,6 +2953,8 @@
   }
 
   function LoginForm({ onLoggedIn, onGoSignUp }) {
+    const [, force] = useState(0);
+    const rerender = () => force(n => n + 1);
     const users = D.listUsers();
     // Default the picker to the FIRST non-current profile so hitting LOG IN
     // after tapping SWITCH actually switches accounts. Falls back to users[0]
@@ -2961,6 +2963,23 @@
     const [pickedName, setPickedName] = useState(
       users.find(u => u !== _currentUser) || users[0] || ''
     );
+    function deleteProfile(u) {
+      if (!confirm(`Delete profile "${u}"? All of its coins, cosmetics, and progress will be gone. This can't be undone.`)) return;
+      try { D.deleteUser && D.deleteUser(u); } catch(e){}
+      // If we deleted the currently-active saved user, unstick sf_user_v1 so
+      // the app doesn't try to resume as a deleted profile.
+      try {
+        if ((localStorage.getItem('sf_user_v1') || '') === u) {
+          localStorage.removeItem('sf_user_v1');
+          localStorage.removeItem('sf_logged_in_v1');
+        }
+      } catch(e){}
+      // Full reload — deleting a profile touches multiple state layers
+      // (list, active user, tab default) so a reload is the cleanest reset.
+      try { location.reload(); return; } catch(e){}
+      if (pickedName === u) setPickedName('');
+      rerender();
+    }
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     function submit() {
@@ -2991,20 +3010,46 @@
         <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left' }}>USERNAME</div>
         <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:160, overflowY:'auto' }}>
           {users.map(u => (
-            <button key={u}
-              onClick={() => { setPickedName(u); setPassword(''); setError(''); }}
+            <div key={u}
               style={{
-                display:'flex', alignItems:'center', gap:10,
-                padding:'8px 12px', borderRadius:8, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:6,
+                padding:'6px 8px 6px 12px', borderRadius:8,
                 background: u === pickedName ? 'rgba(255,154,60,.18)' : 'rgba(255,255,255,.04)',
                 border: `1.5px solid ${u === pickedName ? 'var(--fire-2)' : 'var(--line)'}`,
-                color:'var(--ink)', fontFamily:'inherit',
+                color:'var(--ink)',
               }}>
-              <ProfileAvatar name={u} size={32} />
-              <div style={{ flex:1, textAlign:'left', fontWeight:700 }}>{u}</div>
-              {D.hasPassword(u) && <span style={{ fontSize:11, color:'var(--ink-3)' }}>🔒</span>}
-            </button>
+              {/* Row select — the pick target */}
+              <button
+                onClick={() => { setPickedName(u); setPassword(''); setError(''); }}
+                style={{
+                  display:'flex', alignItems:'center', gap:10, flex:1,
+                  background:'transparent', border:'none', color:'var(--ink)',
+                  fontFamily:'inherit', cursor:'pointer', padding:'2px 0', textAlign:'left',
+                }}>
+                <ProfileAvatar name={u} size={32} />
+                <div style={{ flex:1, textAlign:'left', fontWeight:700 }}>{u}</div>
+                {D.hasPassword(u) && <span style={{ fontSize:11, color:'var(--ink-3)' }}>🔒</span>}
+              </button>
+              {/* Delete button — nukes the profile so old / stuck accounts can be
+                  cleaned up right from the login screen. */}
+              <button title={`Delete "${u}"`}
+                onClick={(e) => { e.stopPropagation(); deleteProfile(u); }}
+                style={{
+                  width:28, height:28, borderRadius:6, cursor:'pointer',
+                  background:'rgba(255,91,110,.12)',
+                  border:'1px solid rgba(255,91,110,.5)',
+                  color:'#ff8a9a', fontWeight:900, fontSize:14,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                }}>
+                ✕
+              </button>
+            </div>
           ))}
+          {users.length === 0 && (
+            <div style={{ padding:'10px 8px', color:'var(--ink-3)', fontSize:13, textAlign:'center' }}>
+              No profiles yet — tap CREATE NEW ACCOUNT below.
+            </div>
+          )}
         </div>
         {pickedName && D.hasPassword(pickedName) && (
           <>
@@ -3020,20 +3065,23 @@
           <div style={{ color:'#ff8a9a', fontSize:12, textAlign:'center' }}>{error}</div>
         )}
         <button className="btn big" onClick={submit}
+          disabled={!pickedName}
           style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
           ▶ LOG IN
         </button>
-        {/* Always-on "create new account" link so users can spin up another
-            profile without hunting for the SIGN UP tab. */}
+        {/* Always-on "create new account" button so users don't have to hunt
+            for the SIGN UP tab — full-width secondary button, not a text link. */}
         {onGoSignUp && (
-          <div style={{ textAlign:'center', fontSize:13, color:'var(--ink-2)', marginTop:8 }}>
-            Don't have an account?{' '}
-            <button onClick={onGoSignUp}
-              style={{ background:'none', border:'none', color:'var(--fire-2)',
-                       textDecoration:'underline', cursor:'pointer', font:'inherit' }}>
-              Create one →
-            </button>
-          </div>
+          <button onClick={onGoSignUp}
+            style={{
+              marginTop:4, fontSize:16, padding:'12px 0',
+              background:'transparent', border:'2px solid var(--fire-2)',
+              color:'var(--fire-2)', borderRadius:10, cursor:'pointer',
+              fontFamily:"'Rajdhani',sans-serif", fontWeight:700,
+              letterSpacing:'.08em', textTransform:'uppercase',
+            }}>
+            + Create new account
+          </button>
         )}
       </div>
     );

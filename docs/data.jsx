@@ -92,11 +92,16 @@ window.GameData = (function () {
   function listUsers() {
     try {
       const list = JSON.parse(localStorage.getItem(LS_USER_LIST) || '[]');
-      // Always include the active one.
-      const u = getUser();
-      if (!list.includes(u)) list.push(u);
+      // Include the active user IF it was explicitly set. Don't inject the
+      // fallback DEFAULT_USER ("Player1") — otherwise deleting the last
+      // profile silently re-adds it and the login screen can't be emptied.
+      const explicit = localStorage.getItem(LS_USER);
+      if (explicit && !list.includes(explicit)) list.push(explicit);
       return list;
-    } catch (e) { return [getUser()]; }
+    } catch (e) {
+      const explicit = (() => { try { return localStorage.getItem(LS_USER); } catch(e){ return null; } })();
+      return explicit ? [explicit] : [];
+    }
   }
   // Case-insensitive existence check — used by sign-up to block dup usernames.
   function userExists(name) {
