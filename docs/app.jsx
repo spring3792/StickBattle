@@ -2954,7 +2954,13 @@
 
   function LoginForm({ onLoggedIn, onGoSignUp }) {
     const users = D.listUsers();
-    const [pickedName, setPickedName] = useState(users[0] || '');
+    // Default the picker to the FIRST non-current profile so hitting LOG IN
+    // after tapping SWITCH actually switches accounts. Falls back to users[0]
+    // when there's only one profile (or none of them is the current user).
+    const _currentUser = (() => { try { return D.getUser(); } catch(e){ return ''; } })();
+    const [pickedName, setPickedName] = useState(
+      users.find(u => u !== _currentUser) || users[0] || ''
+    );
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     function submit() {
@@ -4804,7 +4810,18 @@
     const users = D.listUsers();
     function banName(n) {
       if (!n) return;
-      if (D.addBan(n)) { setInput(''); force(t => t + 1); onChange && onChange(); }
+      if (D.addBan(n)) {
+        setInput(''); force(t => t + 1); onChange && onChange();
+        // If we just banned the currently-active user, kick them out to the
+        // login screen. Without this the ban only takes effect on their next
+        // login attempt — they can keep playing until they log out.
+        try {
+          if ((n || '').trim().toLowerCase() === (D.getUser() || '').toLowerCase()) {
+            localStorage.removeItem('sf_logged_in_v1');
+            location.reload();
+          }
+        } catch(e){}
+      }
     }
     function unban(n) {
       D.removeBan(n);
@@ -5003,9 +5020,20 @@
       onClose();
     }
     function wipeProgress() {
-      if (!confirm('WIPE this profile? Coins, cosmetics, friends — all reset. This cannot be undone.')) return;
+      if (!confirm('WIPE this profile? Coins, cosmetics, friends, and the profile itself — all gone. This cannot be undone.')) return;
+      const name = D.getUser();
+      // Clear the namespaced progress keys.
       ['sf_coins_v1','sf_owned_v1','sf_redeemed_v1','sf_friends_v1','sf_trades_v1']
-        .forEach(k => { try { localStorage.removeItem(k); localStorage.removeItem(k + '__' + D.getUser()); } catch(e){} });
+        .forEach(k => { try { localStorage.removeItem(k); localStorage.removeItem(k + '__' + name); } catch(e){} });
+      // Delete the profile itself so the username is free again and the
+      // launch UI stops treating the user as still signed in.
+      try { D.deleteUser && D.deleteUser(name); } catch(e){}
+      try {
+        localStorage.removeItem('sf_user_v1');
+        localStorage.removeItem('sf_logged_in_v1');
+      } catch(e){}
+      // Full reload — cleanest way to reset every screen and re-init the app.
+      try { location.reload(); return; } catch(e){}
       onCoinsChanged && onCoinsChanged();
       onClose();
     }
