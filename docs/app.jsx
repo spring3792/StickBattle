@@ -758,7 +758,7 @@
 
   function LaunchScreen({ settings, onChange, onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes, onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet, coins,
     playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen,
-    onOpenAdmin, adminKey }) {
+    onOpenAdmin, adminKey, onSwitchAccount }) {
     const title = D.eduTitle(settings.edu);
     const sub = D.eduSub(settings.edu);
     const allSets = Q.allSets();
@@ -787,6 +787,7 @@
           challengeFriend={challengeFriend} onClearChallenge={onClearChallenge}
           onOpenHostingScreen={onOpenHostingScreen}
           onOpenAdmin={onOpenAdmin} adminKey={adminKey}
+          onSwitchAccount={onSwitchAccount}
           onOpenTrade={onOpenTrade} onPreviewSet={onPreviewSet} />
       </div>
     );
@@ -798,7 +799,7 @@
     onPlay, onCreateSet, onDeleteSet, onOpenSettings, onOpenCrates, onOpenCodes,
     onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet,
     playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen,
-    onOpenAdmin, adminKey }) {
+    onOpenAdmin, adminKey, onSwitchAccount }) {
     // Chip helper — icon only on narrow, icon+label otherwise
     const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
       <button onClick={onClick} className="btn sm ghost"
@@ -838,6 +839,9 @@
             </span>
             <Chip icon={D.getAvatar(D.getUser()) ? null : 'friend'} emoji={D.getAvatar(D.getUser())}
               label={D.getDisplayName(D.getUser())} onClick={onOpenProfile} color="#a07bff"/>
+            {onSwitchAccount && (
+              <Chip icon="back" label="Switch" onClick={onSwitchAccount} color="#ff8a9a"/>
+            )}
             <Chip icon="gift"     label="Crates"   onClick={onOpenCrates}    color="#ff9a3c" glow/>
             <Chip icon="users"    label="Friends"  onClick={onOpenFriends}   color="#7bff8a"/>
             <Chip icon="trade"    label="Trade"    onClick={onOpenTrade}     color="#ffd84a"/>
@@ -3410,6 +3414,11 @@
             onOpenProfile={() => setShowProfile(true)}
             onOpenQueue={() => setShowQueue(true)}
             onOpenAdmin={() => setShowAdmin(true)}
+            onSwitchAccount={() => {
+              try { localStorage.removeItem('sf_logged_in_v1'); } catch(e){}
+              setNeedLogin(true);
+              setStage('launch');
+            }}
             onOpenHostingScreen={() => setShowHostingScreen(true)}
             queueCount={playQueue.length}
             adminKey={adminPing}
