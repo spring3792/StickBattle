@@ -1341,7 +1341,19 @@ window.StickFightGame = (function () {
       cache.tick++;
       const shouldReact = (cache.tick % cfg.reactEvery) === 0;
 
-      const target = nearestEnemy(state, p);
+      // COIN RUSH: bots ignore opponents and chase the nearest coin instead.
+      // Falls back to nearestEnemy if there are no coins on the field yet.
+      let target;
+      if (state.mode === 'coins') {
+        let best = null, bestD = Infinity;
+        for (const c of (state.coinDrops || [])) {
+          const d = Math.hypot(c.x - p.x, c.y - (p.y - 24));
+          if (d < bestD) { bestD = d; best = { x: c.x, y: c.y + 24 }; }
+        }
+        target = best; // may be null if no coins are dropping yet
+      } else {
+        target = nearestEnemy(state, p);
+      }
       if (target) {
         if (shouldReact) {
           // Reset cached attack flags every reaction
@@ -1352,10 +1364,17 @@ window.StickFightGame = (function () {
           const moveDx = (Math.random() < cfg.wanderProb) ? -dx : dx;
           cache.left  = moveDx < -30;
           cache.right = moveDx >  30;
-          if (target.y < p.y - 40 && p.onGround && Math.random() < cfg.jumpProb) cache.jump = true;
-          const range = PUNCH_RANGE * (b.reachMul||1) + cfg.reachBonus;
-          if (Math.abs(dx) < range && Math.abs(target.y - p.y) < 40 && Math.random() < cfg.attackProb) {
-            if (Math.random() < 0.5) cache.punch = true; else cache.kick = true;
+          // In coin rush, jump aggressively toward airborne coins.
+          if (state.mode === 'coins' && target.y < p.y - 20 && p.onGround) cache.jump = true;
+          else if (target.y < p.y - 40 && p.onGround && Math.random() < cfg.jumpProb) cache.jump = true;
+          // Attack decision — skipped in coin rush (no PvP damage in that mode).
+          if (state.mode !== 'coins') {
+            const range = PUNCH_RANGE * (b.reachMul||1) + cfg.reachBonus;
+            if (Math.abs(dx) < range && Math.abs(target.y - p.y) < 40 && Math.random() < cfg.attackProb) {
+              if (Math.random() < 0.5) cache.punch = true; else cache.kick = true;
+            }
+          } else {
+            cache.punch = false; cache.kick = false;
           }
           // Edge avoidance
           if ((p.x < 80 && dx < 0) || (p.x > W-80 && dx > 0)) {
