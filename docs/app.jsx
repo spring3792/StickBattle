@@ -818,11 +818,10 @@
         <span>{label}</span>
       </button>
     );
-    // Sidebar/main split — on desktop the ACTION zone (PLAY + Host/Join)
-    // pins to the left and the CUSTOMIZATION grid (modes + options) fills
-    // the right. On narrow viewports it stacks (grid-template-columns 1fr).
+    // Simpler layout: one centered column, top-to-bottom flow. Fewer
+    // simultaneous panels, tighter spacing.
     return (
-      <div style={{ maxWidth:1200, margin:'0 auto', display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ maxWidth:720, margin:'0 auto', display:'flex', flexDirection:'column', gap:12 }}>
         {/* HEADER ROW: title left, chips right */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
@@ -895,17 +894,6 @@
             QUICK MATCH
           </button>
         </div>
-
-        {/* ==== TWO-COLUMN BODY: sticky action zone (left) + customization (right) ==== */}
-        <div style={{
-          display:'grid',
-          gridTemplateColumns:'minmax(0, 360px) minmax(0, 1fr)',
-          gap:14,
-          alignItems:'start',
-        }} className="launch-body-grid">
-
-        {/* LEFT: sticky action stack (hero + host/join) */}
-        <div style={{ display:'flex', flexDirection:'column', gap:12, position:'sticky', top:12 }}>
 
         {/* Active PARTY / CHALLENGE banner — only when one or both are set */}
         {((party && party.length > 0) || challengeFriend) && (
@@ -1006,13 +994,8 @@
         {/* SIMPLE HOST/JOIN CARD — secondary now, sits below the PLAY hero */}
         <HostJoinCard playMode={playMode} party={party} onOpenHostingScreen={onOpenHostingScreen} />
 
-        </div>{/* /LEFT column */}
-
-        {/* RIGHT: customization column (modes + setup grid) */}
-        <div style={{ display:'flex', flexDirection:'column', gap:12, minWidth:0 }}>
-
-        {/* TWO-COLUMN: modes (left) + setup (right) */}
-        <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.4fr) minmax(0, 1fr)', gap:14 }}>
+        {/* STACKED: modes card on top, setup card below — one clean flow */}
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           {/* LEFT: modes */}
           <div className="section-card" style={{ margin:0 }}>
             <div className="sc-h">Game Mode</div>
@@ -1282,10 +1265,6 @@
             </div>
           </div>
         </div>
-
-        </div>{/* /RIGHT column */}
-
-        </div>{/* /TWO-COLUMN body grid */}
 
         <div style={{ opacity:.45, fontSize:11, letterSpacing:'.18em', textTransform:'uppercase', textAlign:'center', marginTop:6 }}>
           No weapons  ·  Cosmetics only  ·  First to {settings.target}  ·  {D.STAGES.length} stages
