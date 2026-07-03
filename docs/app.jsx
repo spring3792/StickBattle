@@ -2675,6 +2675,9 @@
   function PowerupDraft({ losers, profiles, draftMap, onDone }) {
     // draftMap: { [slot]: 'common' | 'rare' } — set by question results in edu mode
     const [currentIdx, setCurrentIdx] = useState(0);
+    // Bot pick reveal: index of the card the bot has "picked" so we can
+    // highlight it briefly before advancing. Null when no reveal is active.
+    const [botPickIdx, setBotPickIdx] = useState(null);
     const offers = useMemo(() => {
       return losers.map(slot => {
         const tier = draftMap?.[slot] || 'common';
@@ -2688,6 +2691,7 @@
     const slot = losers[currentIdx];
     const liveProfile = refLive.current.find(p => p._slot === slot);
     if (!liveProfile) { onDone(refLive.current); return null; }
+    const isBotTurn = !!liveProfile.isBot;
     const tierLabel = draftMap?.[slot] === 'rare' ? 'RARE POOL' : 'STANDARD POOL';
     const tierColor = draftMap?.[slot] === 'rare' ? 'var(--fire-3)' : 'var(--ink-2)';
 
@@ -2696,53 +2700,109 @@
       const ix = np.findIndex(p => p._slot === slot);
       np[ix] = { ...np[ix], buffs: [...(np[ix].buffs || []), pu] };
       refLive.current = np;
+      setBotPickIdx(null);
       if (currentIdx + 1 >= losers.length) onDone(np);
       else setCurrentIdx(currentIdx + 1);
     }
 
-    // CPU bots auto-pick after a short delay so the human still gets to see
-    // what the bot grabbed.
+    // CPU bots: two-phase pick so the human can see it clearly.
+    //   Phase 1 (0 → 1100ms): "CPU is picking…" indicator shown, cards dim.
+    //   Phase 2 (1100 → 2000ms): The chosen card is highlighted, then commits.
     useEffect(() => {
-      if (!liveProfile || !liveProfile.isBot) return;
+      if (!isBotTurn) { setBotPickIdx(null); return; }
       const choices = offers[currentIdx] || [];
       if (choices.length === 0) return;
-      const id = setTimeout(() => {
-        // Bot pick: prefer powerups it doesn't already have; tie-break random.
-        const owned = new Set((liveProfile.buffs || []).map(b => b.id));
-        const fresh = choices.filter(c => !owned.has(c.id));
-        const pool  = fresh.length > 0 ? fresh : choices;
-        pick(pool[Math.floor(Math.random() * pool.length)]);
-      }, 900);
-      return () => clearTimeout(id);
-    }, [currentIdx, liveProfile, offers]);
+      // Bot pick: prefer powerups it doesn't already have; tie-break random.
+      const owned = new Set((liveProfile.buffs || []).map(b => b.id));
+      const fresh = choices.filter(c => !owned.has(c.id));
+      const pool  = fresh.length > 0 ? fresh : choices;
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      const chosenIdx = choices.indexOf(chosen);
+      const t1 = setTimeout(() => setBotPickIdx(chosenIdx), 1100);
+      const t2 = setTimeout(() => pick(chosen), 2000);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentIdx, isBotTurn]);
 
     return (
-      <div className="center" style={{ padding:24, gap:14, zIndex:2 }}>
+      <div className="center" style={{ padding:24, gap:16, zIndex:2, overflowY:'auto' }}>
         <div style={{ textAlign:'center' }}>
           <div className="title-art" style={{ fontSize:'clamp(38px,6vw,72px)' }}>POWER-UP</div>
-          <div className="title-sub">
-            <span style={{ color: liveProfile.color }}>{liveProfile.name}</span> picks ({currentIdx+1}/{losers.length})
-            <span style={{ marginLeft:14, color:tierColor, fontSize:14, letterSpacing:'.15em' }}>{tierLabel}</span>
-          </div>
-        </div>
-        <div className="row" style={{ gap:14, justifyContent:'center', flexWrap:'wrap' }}>
-          {offers[currentIdx].map((pu, i) => (
-            <div key={pu.id+i} className="powerup-card" onClick={() => pick(pu)}>
-              <div className="cat">
-                <Icon id={D.catIconId(pu.cat)} size={12} style={{verticalAlign:'middle', marginRight:5}}/>
-                {D.catLabel(pu.cat)}
+          {/* Turn indicator — clearer whose pick this is, and BIG CPU status. */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, flexWrap:'wrap' }}>
+            <div style={{
+              display:'inline-flex', alignItems:'center', gap:10,
+              padding:'8px 16px', borderRadius:10,
+              background: isBotTurn ? 'rgba(92,246,255,.15)' : 'rgba(255,154,60,.15)',
+              border: `2px solid ${isBotTurn ? '#5cf6ff' : 'var(--fire-2)'}`,
+            }}>
+              <div style={{
+                width:26, height:26, borderRadius:6, background:liveProfile.color,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontFamily:"'Bebas Neue'", color:'#0a0512', fontSize:16, fontWeight:800,
+              }}>{liveProfile.name.slice(0,1).toUpperCase()}</div>
+              <div style={{ fontFamily:"'Bebas Neue'", fontSize:22, color:'#fff', letterSpacing:'.06em' }}>
+                {liveProfile.name.toUpperCase()}
+                {isBotTurn && <span style={{ marginLeft:8, color:'#5cf6ff', fontSize:14 }}>· CPU</span>}
               </div>
-              <div style={{ margin:'10px auto', width:64, height:64, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(255,255,255,.04)', borderRadius:50 }}>
-                <Icon id={pu.iconId} size={42} color="var(--fire-3)" />
+              <div style={{ fontSize:12, color:'var(--ink-3)', letterSpacing:'.15em' }}>
+                {currentIdx+1}/{losers.length}
               </div>
-              <div className="name">{pu.name}</div>
-              <div className="desc">{pu.desc}</div>
             </div>
-          ))}
+            <div style={{ fontSize:13, color:tierColor, letterSpacing:'.15em', fontWeight:800 }}>{tierLabel}</div>
+          </div>
+          {isBotTurn && (
+            <div style={{
+              marginTop:12,
+              fontSize:15, color:'#5cf6ff', letterSpacing:'.2em',
+              fontFamily:"'Bebas Neue'",
+              animation:'fade 1.6s ease-in-out infinite',
+            }}>
+              {botPickIdx === null ? '⟳ CPU IS CHOOSING…' : '✔ CPU LOCKED IN A PICK'}
+            </div>
+          )}
+        </div>
+        <div className="row" style={{ gap:16, justifyContent:'center', flexWrap:'wrap', maxWidth:800 }}>
+          {offers[currentIdx].map((pu, i) => {
+            const isChosen = botPickIdx === i;
+            const isDim = isBotTurn && botPickIdx !== null && !isChosen;
+            return (
+              <div key={pu.id+i} className="powerup-card"
+                onClick={() => { if (!isBotTurn) pick(pu); }}
+                style={{
+                  cursor: isBotTurn ? 'default' : 'pointer',
+                  transform: isChosen ? 'translateY(-8px) scale(1.04)' : undefined,
+                  borderColor: isChosen ? '#5bff8a' : undefined,
+                  borderWidth: isChosen ? 3 : undefined,
+                  boxShadow: isChosen ? '0 0 0 3px rgba(91,255,138,.25), 0 8px 24px rgba(91,255,138,.35)' : undefined,
+                  opacity: isDim ? 0.35 : 1,
+                  filter: isDim ? 'grayscale(.5)' : undefined,
+                  transition: 'transform .18s, opacity .18s, box-shadow .18s',
+                }}>
+                <div className="cat">
+                  <Icon id={D.catIconId(pu.cat)} size={12} style={{verticalAlign:'middle', marginRight:5}}/>
+                  {D.catLabel(pu.cat)}
+                </div>
+                <div style={{ margin:'10px auto', width:72, height:72, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(255,255,255,.05)', borderRadius:50, border:'1px solid var(--line-2)' }}>
+                  <Icon id={pu.iconId} size={46} color={isChosen ? '#5bff8a' : 'var(--fire-3)'} />
+                </div>
+                <div className="name" style={{ color: isChosen ? '#5bff8a' : undefined }}>{pu.name}</div>
+                <div className="desc">{pu.desc}</div>
+                {isChosen && (
+                  <div style={{
+                    marginTop:8,
+                    fontSize:12, letterSpacing:'.2em', color:'#5bff8a', fontWeight:800,
+                  }}>
+                    ✔ CPU PICK
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         {liveProfile.buffs && liveProfile.buffs.length > 0 && (
-          <div className="panel" style={{ marginTop:6, padding:'8px 14px', fontSize:13, color:'var(--ink-2)' }}>
-            Active buffs:
+          <div className="panel" style={{ marginTop:6, padding:'10px 16px', fontSize:13, color:'var(--ink-2)', maxWidth:640 }}>
+            <span style={{ fontSize:11, letterSpacing:'.2em', color:'var(--ink-3)', marginRight:8 }}>ACTIVE BUFFS</span>
             {liveProfile.buffs.map((b, i) => (
               <span key={i} style={{ marginLeft:10 }}>
                 <Icon id={b.iconId} size={14} style={{verticalAlign:'middle', marginRight:4}}/>

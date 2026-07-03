@@ -4946,12 +4946,24 @@ window.StickFightGame = (function () {
       ctx.fillStyle = 'rgba(0,0,0,.35)';
       const segs = Math.floor(p.maxHp / 25);
       for (let s = 1; s < segs; s++) ctx.fillRect(x+14 + (slotW-28)*s/segs, y+30, 1, 12);
-      // score (big) — in KOTH show hill score; otherwise round wins
+      // score (big) — in KOTH show hill score; otherwise round wins.
+      // Coin Rush shows the target inline (e.g. "3 / 5") since the whole
+      // mode is a race to that number.
       const scoreNum = (gameState.mode === 'koth') ? (p.kothScore || 0) : p.score;
+      const targetNum = p._target || 5;
       ctx.font = "700 26px 'Bebas Neue', sans-serif";
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ffd76a';
-      ctx.fillText(`${scoreNum}`, x + slotW - 12, y + 26);
+      if (gameState.mode === 'coins') {
+        ctx.fillText(`${scoreNum}`, x + slotW - 12, y + 26);
+        ctx.font = "700 12px 'Rajdhani'";
+        ctx.fillStyle = '#c9b4dc';
+        const scoreText = `${scoreNum}`;
+        const scoreW = ctx.measureText(scoreText).width;
+        ctx.fillText(`/ ${targetNum}`, x + slotW - 12 - scoreW - 22, y + 26);
+      } else {
+        ctx.fillText(`${scoreNum}`, x + slotW - 12, y + 26);
+      }
       // bot indicator dot
       if (p.isBot) {
         ctx.fillStyle = '#5bf0e8';
