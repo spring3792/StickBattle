@@ -1131,51 +1131,131 @@
             )}
             <div className="section-card" style={{ margin:0 }}>
               <div className="sc-h">Question Set</div>
-              <div className="row" style={{ gap:6, flexWrap:'wrap' }}>
-                {/* "None" pill at the front turns off Education Mode entirely. */}
-                <button onClick={() => onChange({ ...settings, edu: false })}
-                  className={`pill ${!settings.edu ? 'on' : ''}`}
-                  style={{ border:'none', cursor:'pointer', gap:6, fontWeight:700 }}
-                  title="No questions between rounds">
-                  <Icon id="x" size={12}/> None
-                </button>
-                {allSets.map(s => {
-                  const isActive = settings.edu && activeSet.id === s.id;
-                  return (
-                    <span key={s.id} style={{ display:'inline-flex', alignItems:'stretch', borderRadius:999, overflow:'hidden' }}>
-                      <button onClick={() => onChange({ ...settings, edu: true, questionSetId: s.id })}
-                        className={`pill ${isActive ? 'on' : ''}`}
-                        style={{ border:'none', cursor:'pointer', fontSize:11, gap:4 }}
-                        title={s.description || s.name}>
-                        <Icon id={s.source === 'custom' ? 'pencil' : s.source === 'local' ? 'sparkle' : 'book'} size={11}/>
-                        {s.name} <span style={{ opacity:.55 }}>({s.questions.length}q)</span>
+              {/* Master toggle — questions on/off. Off hides the whole picker. */}
+              <div style={{
+                display:'flex', alignItems:'center', gap:10, marginBottom:10,
+                padding:'10px 12px', borderRadius:10,
+                background:'rgba(0,0,0,.3)', border:'1px solid var(--line)',
+              }}>
+                <div style={{ display:'inline-flex', background:'rgba(0,0,0,.4)',
+                  borderRadius:8, border:'1px solid var(--line-2)', overflow:'hidden' }}>
+                  <button onClick={() => onChange({ ...settings, edu: false })}
+                    style={{
+                      padding:'6px 14px', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                      background: !settings.edu ? 'linear-gradient(180deg, var(--fire-2), var(--fire-1))' : 'transparent',
+                      color: !settings.edu ? '#fff' : 'var(--ink-2)',
+                      border:'none', cursor:'pointer', fontSize:13,
+                    }}>OFF</button>
+                  <button onClick={() => onChange({ ...settings, edu: true })}
+                    style={{
+                      padding:'6px 14px', fontFamily:"'Bebas Neue'", letterSpacing:'.1em',
+                      background: settings.edu ? 'linear-gradient(180deg, var(--fire-2), var(--fire-1))' : 'transparent',
+                      color: settings.edu ? '#fff' : 'var(--ink-2)',
+                      border:'none', cursor:'pointer', fontSize:13,
+                    }}>ON</button>
+                </div>
+                <div style={{ flex:1, fontSize:12, color:'var(--ink-2)' }}>
+                  {settings.edu
+                    ? <>Between rounds, players answer a question.</>
+                    : <>Pure action — no questions.</>}
+                </div>
+              </div>
+
+              {settings.edu && (() => {
+                // Group sets by source so the picker doesn't look like pill soup.
+                const groups = {
+                  builtin: { label:'Built-in',    icon:'book',    color:'var(--ink-2)',  sets:[] },
+                  ai:      { label:'AI-generated', icon:'sparkle', color:'#5cf6ff',      sets:[] },
+                  custom:  { label:'My custom',   icon:'pencil',  color:'var(--fire-2)', sets:[] },
+                };
+                for (const s of allSets) {
+                  const g = s.source === 'custom' ? groups.custom
+                          : s.source === 'local'  ? groups.ai
+                          : groups.builtin;
+                  g.sets.push(s);
+                }
+                return (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {/* Active-set summary card so the current choice is unmissable */}
+                    {activeSet && (
+                      <div style={{
+                        display:'flex', alignItems:'center', gap:12,
+                        padding:'10px 12px', borderRadius:10,
+                        background:'linear-gradient(90deg, rgba(255,154,60,.15), transparent 80%)',
+                        border:'1.5px solid var(--fire-2)',
+                      }}>
+                        <div style={{
+                          width:36, height:36, borderRadius:8, background:'rgba(255,154,60,.2)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          <Icon id={activeSet.source === 'custom' ? 'pencil' : activeSet.source === 'local' ? 'sparkle' : 'book'}
+                            size={18} color="var(--fire-2)"/>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontWeight:800, fontSize:14, color:'#fff' }}>{activeSet.name}</div>
+                          <div style={{ fontSize:11, color:'var(--ink-3)' }}>
+                            {activeSet.questions.length} questions · {
+                              activeSet.source === 'custom' ? 'Your custom set'
+                              : activeSet.source === 'local' ? 'AI-generated'
+                              : 'Built-in'
+                            }
+                          </div>
+                        </div>
+                        <button className="btn sm ghost" onClick={() => onPreviewSet && onPreviewSet(activeSet)}
+                          title="Preview questions">
+                          <Icon id="book" size={12}/>
+                        </button>
+                        {(activeSet.source === 'custom' || activeSet.source === 'local') && (
+                          <button className="btn sm ghost" onClick={() => onDeleteSet && onDeleteSet(activeSet)}
+                            style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}
+                            title="Delete this set">
+                            <Icon id="x" size={12}/>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {/* Grouped picker — one row per source */}
+                    {Object.values(groups).filter(g => g.sets.length > 0).map(g => (
+                      <div key={g.label}>
+                        <div style={{
+                          fontSize:10, letterSpacing:'.2em', color:g.color,
+                          textTransform:'uppercase', marginBottom:4, display:'flex',
+                          alignItems:'center', gap:5,
+                        }}>
+                          <Icon id={g.icon} size={10}/> {g.label} ({g.sets.length})
+                        </div>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                          {g.sets.map(s => {
+                            const isActive = activeSet && activeSet.id === s.id;
+                            return (
+                              <button key={s.id}
+                                onClick={() => onChange({ ...settings, edu: true, questionSetId: s.id })}
+                                title={s.description || s.name}
+                                style={{
+                                  padding:'6px 10px', borderRadius:8, cursor:'pointer',
+                                  background: isActive ? 'rgba(255,154,60,.2)' : 'rgba(255,255,255,.04)',
+                                  border: `1.5px solid ${isActive ? 'var(--fire-2)' : 'var(--line)'}`,
+                                  color: isActive ? '#fff' : 'var(--ink-2)',
+                                  fontFamily:"'Rajdhani',sans-serif", fontSize:12, fontWeight:700,
+                                  display:'flex', alignItems:'center', gap:5,
+                                }}>
+                                {s.name}
+                                <span style={{ opacity:.55, fontSize:10 }}>{s.questions.length}q</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="row" style={{ gap:6, marginTop:2 }}>
+                      <button className="btn sm ghost" onClick={onCreateSet}>
+                        <Icon id="plus" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
+                        New set
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); onPreviewSet && onPreviewSet(s); }}
-                        title={`Preview "${s.name}"`}
-                        className="pill" style={{ border:'none', padding:'4px 8px', marginLeft:-2,
-                          background:'rgba(255,255,255,.05)', color:'var(--ink-2)' }}>
-                        <Icon id="book" size={11}/>
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="row" style={{ gap:6, marginTop:8 }}>
-                <button className="btn sm ghost" onClick={onCreateSet}>
-                  <Icon id="plus" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
-                  New set
-                </button>
-                {settings.edu && activeSet && (activeSet.source === 'custom' || activeSet.source === 'ai') && (
-                  <button className="btn sm ghost" onClick={() => onDeleteSet && onDeleteSet(activeSet)}
-                    style={{ borderColor:'rgba(255,91,110,.5)', color:'#ff8a9a' }}>
-                    <Icon id="x" size={12} style={{verticalAlign:'middle', marginRight:4}}/>
-                    Delete
-                  </button>
-                )}
-              </div>
-              <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:6 }}>
-                {settings.edu ? 'Questions appear between rounds.' : 'No questions — pure action.'}
-              </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -3370,6 +3450,14 @@
     }, [settings.edu]);
 
     function startLobby() {
+      // Auto-host on normal play — if the user isn't already hosting, flip the
+      // flag so friends can join their session (matches the mental model of
+      // "clicking play should make me the host"). No-op if already hosting.
+      try {
+        if (localStorage.getItem('sf_hosting_v2') !== '1') {
+          localStorage.setItem('sf_hosting_v2', '1');
+        }
+      } catch(e){}
       // ONLINE flavour: brief matchmaking overlay before dropping in.
       if (playMode === 'online') {
         setMatchmaking(true);
