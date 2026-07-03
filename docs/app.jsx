@@ -2906,9 +2906,14 @@
       <div style={{
         position:'fixed', inset:0, zIndex:100,
         background: 'radial-gradient(ellipse at 50% 110%, var(--fire-1) 0%, transparent 55%), linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 55%, var(--bg-2) 100%)',
-        display:'grid', placeItems:'center', padding:24,
+        // Vertical scroll when the panel gets tall (long profile list, sign-up form,
+        // small-height screens). Grid + placeItems centers the child but caps at
+        // viewport height without scrolling — flex column allows overflow to scroll.
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start',
+        overflowY:'auto', WebkitOverflowScrolling:'touch',
+        padding:'24px 24px 40px',
       }}>
-        <div style={{ width:'min(460px, 94vw)', textAlign:'center' }}>
+        <div style={{ width:'min(460px, 94vw)', textAlign:'center', margin:'auto 0' }}>
           <div className="title-art" style={{ fontSize:'clamp(54px, 9vw, 110px)', lineHeight:.85, marginBottom:6 }}>
             STICK<br/>SCHOLAR
           </div>
@@ -2982,6 +2987,26 @@
     }
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    // Manual-username entry — lets someone log in by typing a username that
+    // isn't (or isn't yet) in this browser's saved profiles list. If the
+    // typed name matches an existing saved profile, we run the normal
+    // password check; otherwise we register the name as a fresh profile so
+    // the user is signed in immediately.
+    const [typedName, setTypedName] = useState('');
+    const [typedPw, setTypedPw] = useState('');
+    function submitTyped() {
+      const clean = (typedName || '').trim().slice(0, 20);
+      if (!clean) { setError('Type a username'); return; }
+      if (D.isBanned && D.isBanned(clean)) { setError(`"${clean}" is banned.`); return; }
+      const exists = D.userExists ? D.userExists(clean) : false;
+      if (exists) {
+        // Existing profile — respect its password if one is set.
+        if (!D.verifyPassword(clean, typedPw)) { setError('Wrong password'); return; }
+      }
+      D.setUser(clean);
+      try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
+      onLoggedIn(clean);
+    }
     function submit() {
       if (!pickedName) { setError('Pick a profile'); return; }
       if (D.isBanned && D.isBanned(pickedName)) { setError(`"${pickedName}" is banned.`); return; }
@@ -2991,23 +3016,14 @@
       try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
       onLoggedIn(pickedName);
     }
-    if (users.length === 0) {
-      return (
-        <div style={{ textAlign:'center', color:'var(--ink-2)', padding:'18px 0' }}>
-          No saved profiles yet.{' '}
-          {onGoSignUp ? (
-            <button onClick={onGoSignUp}
-              style={{ background:'none', border:'none', color:'var(--fire-2)',
-                       textDecoration:'underline', cursor:'pointer', font:'inherit' }}>
-              Create one →
-            </button>
-          ) : <strong>SIGN UP</strong>}
-        </div>
-      );
-    }
+    // Note: no early return for users.length === 0. The "or type a username"
+    // block below works either way, and hiding it when the list is empty was
+    // exactly the case where users couldn't log in.
     return (
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-        <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left' }}>USERNAME</div>
+        {users.length > 0 && (
+          <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left' }}>SAVED PROFILES</div>
+        )}
         <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:160, overflowY:'auto' }}>
           {users.map(u => (
             <div key={u}
@@ -3064,11 +3080,52 @@
         {error && (
           <div style={{ color:'#ff8a9a', fontSize:12, textAlign:'center' }}>{error}</div>
         )}
-        <button className="btn big" onClick={submit}
-          disabled={!pickedName}
-          style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
-          ▶ LOG IN
-        </button>
+        {users.length > 0 && (
+          <button className="btn big" onClick={submit}
+            disabled={!pickedName}
+            style={{ marginTop:6, fontSize:20, padding:'14px 0' }}>
+            ▶ LOG IN
+          </button>
+        )}
+        {/* Type-in login — for accounts that exist but aren't in this
+            browser's saved list. Also works for typing in a brand-new name
+            (registers on the fly). */}
+        <div style={{
+          marginTop:10, padding:'12px 12px 14px',
+          borderRadius:10,
+          border:'1px dashed var(--line-2)',
+          background:'rgba(255,255,255,.03)',
+        }}>
+          <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)',
+            textAlign:'left', marginBottom:6 }}>
+            OR TYPE A USERNAME
+          </div>
+          <input type="text" maxLength={20} placeholder="Username"
+            value={typedName}
+            onChange={e => { setTypedName(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && submitTyped()}
+            style={{ width:'100%', padding:'10px 12px', fontSize:15 }}/>
+          {typedName.trim() && D.userExists && D.userExists(typedName.trim()) &&
+           D.hasPassword && D.hasPassword(typedName.trim()) && (
+            <input type="password" placeholder="Password"
+              value={typedPw}
+              onChange={e => { setTypedPw(e.target.value); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && submitTyped()}
+              style={{ width:'100%', padding:'10px 12px', fontSize:15, marginTop:6 }}/>
+          )}
+          <button onClick={submitTyped}
+            disabled={!typedName.trim()}
+            style={{
+              width:'100%', marginTop:8, padding:'10px 0', fontSize:15,
+              background:'linear-gradient(180deg, #5cf6ff, #2a7bff)',
+              color:'#001428', border:'none', borderRadius:8, cursor:'pointer',
+              fontFamily:"'Rajdhani',sans-serif", fontWeight:800,
+              letterSpacing:'.08em', textTransform:'uppercase',
+              opacity: typedName.trim() ? 1 : 0.45,
+            }}>
+            ▶ Log in as “{typedName.trim() || '…'}”
+          </button>
+        </div>
         {/* Always-on "create new account" button so users don't have to hunt
             for the SIGN UP tab — full-width secondary button, not a text link. */}
         {onGoSignUp && (
