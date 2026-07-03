@@ -2998,10 +2998,19 @@
       const clean = (typedName || '').trim().slice(0, 20);
       if (!clean) { setError('Type a username'); return; }
       if (D.isBanned && D.isBanned(clean)) { setError(`"${clean}" is banned.`); return; }
+      if (!typedPw || typedPw.length < 4) { setError('Password required (4+ chars)'); return; }
       const exists = D.userExists ? D.userExists(clean) : false;
       if (exists) {
-        // Existing profile — respect its password if one is set.
-        if (!D.verifyPassword(clean, typedPw)) { setError('Wrong password'); return; }
+        if (D.hasPassword && D.hasPassword(clean)) {
+          if (!D.verifyPassword(clean, typedPw)) { setError('Wrong password'); return; }
+        } else {
+          // Legacy profile with no password — lock it in on this login.
+          D.setPassword && D.setPassword(clean, typedPw);
+        }
+      } else {
+        // Brand new profile — register the typed password.
+        D.setUser(clean);
+        D.setPassword && D.setPassword(clean, typedPw);
       }
       D.setUser(clean);
       try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
@@ -3010,8 +3019,14 @@
     function submit() {
       if (!pickedName) { setError('Pick a profile'); return; }
       if (D.isBanned && D.isBanned(pickedName)) { setError(`"${pickedName}" is banned.`); return; }
-      const ok = D.verifyPassword(pickedName, password);
-      if (!ok) { setError('Wrong password'); return; }
+      if (!password || password.length < 4) { setError('Password required (4+ chars)'); return; }
+      if (D.hasPassword && D.hasPassword(pickedName)) {
+        if (!D.verifyPassword(pickedName, password)) { setError('Wrong password'); return; }
+      } else {
+        // Legacy profile without a saved password — set the typed one now so
+        // future logins require it.
+        D.setPassword && D.setPassword(pickedName, password);
+      }
       D.setUser(pickedName);
       try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
       onLoggedIn(pickedName);
@@ -3067,11 +3082,11 @@
             </div>
           )}
         </div>
-        {pickedName && D.hasPassword(pickedName) && (
+        {pickedName && (
           <>
             <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left', marginTop:6 }}>PASSWORD</div>
             <input type="password" value={password} autoFocus
-              placeholder="Password"
+              placeholder={D.hasPassword(pickedName) ? 'Password' : 'Set a password (4+ chars)'}
               onChange={e => { setPassword(e.target.value); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && submit()}
               style={{ padding:'10px 14px', fontSize:14 }}/>
@@ -3105,14 +3120,16 @@
             onChange={e => { setTypedName(e.target.value); setError(''); }}
             onKeyDown={e => e.key === 'Enter' && submitTyped()}
             style={{ width:'100%', padding:'10px 12px', fontSize:15 }}/>
-          {typedName.trim() && D.userExists && D.userExists(typedName.trim()) &&
-           D.hasPassword && D.hasPassword(typedName.trim()) && (
-            <input type="password" placeholder="Password"
-              value={typedPw}
-              onChange={e => { setTypedPw(e.target.value); setError(''); }}
-              onKeyDown={e => e.key === 'Enter' && submitTyped()}
-              style={{ width:'100%', padding:'10px 12px', fontSize:15, marginTop:6 }}/>
-          )}
+          <input type="password"
+            placeholder={
+              typedName.trim() && D.userExists && D.userExists(typedName.trim())
+                ? (D.hasPassword && D.hasPassword(typedName.trim()) ? 'Password' : 'Set a password (4+ chars)')
+                : 'Password (4+ chars)'
+            }
+            value={typedPw}
+            onChange={e => { setTypedPw(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && submitTyped()}
+            style={{ width:'100%', padding:'10px 12px', fontSize:15, marginTop:6 }}/>
           <button onClick={submitTyped}
             disabled={!typedName.trim()}
             style={{
@@ -3155,8 +3172,9 @@
       if (!clean) { setError('Pick a username'); return; }
       if (D.isBanned && D.isBanned(clean)) { setError('You are banned. Pick a different name.'); return; }
       if (D.userExists(clean)) { setError('Username already taken'); return; }
+      if (!password || password.length < 4) { setError('Password required (4+ chars)'); return; }
       D.setUser(clean);                     // also writes it into the list
-      if (password) D.setPassword(clean, password);
+      D.setPassword(clean, password);
       if (avatar)   D.setAvatar(clean, avatar);
       try { localStorage.setItem('sf_logged_in_v1', '1'); } catch(e){}
       onLoggedIn(clean);
@@ -3175,9 +3193,9 @@
           </div>
         )}
         <div style={{ fontSize:11, letterSpacing:'.18em', color:'var(--ink-3)', textAlign:'left', marginTop:4 }}>
-          PASSWORD <span style={{ textTransform:'none', letterSpacing:0, color:'var(--ink-3)' }}>(optional)</span>
+          PASSWORD <span style={{ textTransform:'none', letterSpacing:0, color:'var(--ink-3)' }}>(required, 4+ chars)</span>
         </div>
-        <input type="password" placeholder="Optional"
+        <input type="password" placeholder="Password"
           value={password}
           onChange={e => setPassword(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && submit()}
