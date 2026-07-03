@@ -940,10 +940,8 @@
           </div>
         )}
 
-        {/* SIMPLE HOST/JOIN CARD — always visible, more prominent in online mode */}
-        <HostJoinCard playMode={playMode} party={party} onOpenHostingScreen={onOpenHostingScreen} />
-
-        {/* ONLINE-MODE BIG LOBBY CARD — replaces the hero strip when in online */}
+        {/* HERO — the primary action lives at the top so PLAY is one glance away.
+            Host/Join sits below as a secondary strip. */}
         {playMode === 'online' ? (
           <OnlineLobbyCard
             selectedMode={selectedMode}
@@ -987,6 +985,9 @@
           </button>
         </div>
         )}
+
+        {/* SIMPLE HOST/JOIN CARD — secondary now, sits below the PLAY hero */}
+        <HostJoinCard playMode={playMode} party={party} onOpenHostingScreen={onOpenHostingScreen} />
 
         {/* TWO-COLUMN: modes (left) + setup (right) */}
         <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.4fr) minmax(0, 1fr)', gap:14 }}>
@@ -3639,8 +3640,13 @@
     const arenaProfiles = useMemo(() => profiles.map(p => ({
       name: p.name, color: p.color, darkColor: p.darkColor,
       hat: p.hat, outfit: p.outfit, face: p.face, trail: p.trail,
-      isBot: p.isBot, buffs: p.buffs, score: p._score, _target: settings.target,
-    })), [profiles, settings.target]);
+      isBot: p.isBot, buffs: p.buffs,
+      // For coin rush, the in-arena score is coins picked up in the
+      // current round — always start at 0, not from persistent _score
+      // (which would carry the round-win count in as pre-picked coins).
+      score: settings.mode === 'coins' ? 0 : p._score,
+      _target: settings.target,
+    })), [profiles, settings.target, settings.mode]);
 
     // current question player object (with color)
     const currentQuestionPlayer = questionQueue.length > 0 ? profiles.find(p => p._slot === questionQueue[0]) : null;
