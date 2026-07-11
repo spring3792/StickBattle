@@ -507,17 +507,18 @@
   function HostJoinCard({ playMode, party, onOpenHostingScreen }) {
     const [joinCode, setJoinCode] = useState('');
     const [showJoined, setShowJoined] = useState(null);
-    // Hosting toggle — persists across reloads so the host stays "live" until
-    // they explicitly stop. When false, the code is hidden and only Join shows.
-    const [hosting, setHosting] = useState(() => {
-      // Default OFF — only show the hosting code/View Lobby strip after the
-      // user explicitly presses HOST GAME. Persists the user's last choice.
-      try { return localStorage.getItem('sf_hosting_v2') === '1'; }
-      catch(e) { return false; }
-    });
+    // Hosting toggle — always OFF on page load. Sessions don't carry the
+    // hosting state over; the user has to press HOST GAME each time.
+    const [hosting, setHosting] = useState(false);
+    // On first render, wipe any stale hosting flag from previous sessions.
+    useEffect(() => {
+      try { localStorage.removeItem('sf_hosting_v2'); } catch(e){}
+    }, []);
     function toggleHost() {
       const next = !hosting;
       setHosting(next);
+      // Kept for other components that may still read the flag mid-session,
+      // but it's cleared on page load so it never carries over.
       try { localStorage.setItem('sf_hosting_v2', next ? '1' : '0'); } catch(e){}
       if (next && onOpenHostingScreen) onOpenHostingScreen();
       setShowJoined(next ? 'Hosting started! Share your code.' : 'Stopped hosting');
@@ -3477,14 +3478,6 @@
     }, [settings.edu]);
 
     function startLobby() {
-      // Auto-host on normal play — if the user isn't already hosting, flip the
-      // flag so friends can join their session (matches the mental model of
-      // "clicking play should make me the host"). No-op if already hosting.
-      try {
-        if (localStorage.getItem('sf_hosting_v2') !== '1') {
-          localStorage.setItem('sf_hosting_v2', '1');
-        }
-      } catch(e){}
       // ONLINE flavour: brief matchmaking overlay before dropping in.
       if (playMode === 'online') {
         setMatchmaking(true);

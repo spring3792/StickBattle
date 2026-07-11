@@ -30,8 +30,10 @@ window.GameData = (function () {
     outfit: ['none', 'tee', 'hoodie'],
     face:   ['default', 'none', 'smile', 'glasses'],
     trail:  ['none', 'dust'],
-    aura:   ['none'],
-    halo:   ['none'],
+    // AURAS and HALOS are all starters — they're brand new, so give
+    // every player the full picker instead of hiding them behind crates.
+    aura:   ['none', 'fire', 'ice', 'shadow', 'rainbow', 'electric', 'gold'],
+    halo:   ['none', 'angel', 'devil', 'neon', 'flame', 'crown_halo', 'ghost'],
   };
   function tagRarity(list, kind) {
     const starters = STARTER_IDS[kind] || ['none'];
