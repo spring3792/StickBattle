@@ -5431,9 +5431,15 @@
     }
     return (
       <div style={{ position:'fixed', inset:0, zIndex:140,
-        background:'rgba(2,4,12,.85)', display:'grid', placeItems:'center', padding:14, backdropFilter:'blur(4px)' }}>
+        background:'rgba(2,4,12,.85)',
+        // Flex column + overflow so the panel scrolls when it's taller than
+        // the viewport (SUPER POWERS + Moderation + Grant + Danger Zone).
+        display:'flex', alignItems:'flex-start', justifyContent:'center',
+        overflowY:'auto', WebkitOverflowScrolling:'touch',
+        padding:'20px 14px', backdropFilter:'blur(4px)' }}>
         <div className="panel" style={{
-          width:'min(540px, 96vw)', padding:0,
+          width:'min(540px, 96vw)', padding:0, margin:'auto 0',
+          maxHeight:'none',
           background:'linear-gradient(160deg, rgba(60,10,30,.95), rgba(8,4,18,.97))',
           border:'2px solid rgba(255,91,110,.6)',
           boxShadow:'0 12px 48px rgba(255,91,110,.35)',
