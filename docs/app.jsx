@@ -995,6 +995,11 @@
         {/* SIMPLE HOST/JOIN CARD — secondary now, sits below the PLAY hero */}
         <HostJoinCard playMode={playMode} party={party} onOpenHostingScreen={onOpenHostingScreen} />
 
+        {/* CHANGE YOUR LOOK — inline color + emoji + full stickman cosmetics
+            (hat/outfit/face/trail/aura/halo) so users see and equip Aura and
+            Halo without having to open the hosting screen. */}
+        <LobbyLookPanel active={D.getUser()} onOpenProfile={onOpenProfile} />
+
         {/* STACKED: modes card on top, setup card below — one clean flow */}
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           {/* LEFT: modes */}
