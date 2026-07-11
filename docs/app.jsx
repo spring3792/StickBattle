@@ -5301,6 +5301,116 @@
       D.setAdmin(false);
       onClose();
     }
+    // ===== SUPER POWERS — grow-a-garden style admin commands =====
+    // Small non-blocking notice so the user sees the action fired.
+    function flash(msg, color = '#5bff8a') {
+      const el = document.createElement('div');
+      el.textContent = msg;
+      el.style.cssText = `
+        position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
+        background:rgba(0,0,0,.85); color:${color}; padding:14px 28px;
+        border:2px solid ${color}; border-radius:12px;
+        font:800 20px 'Bebas Neue', sans-serif; letter-spacing:.14em;
+        z-index:9999; pointer-events:none;
+        box-shadow: 0 0 32px ${color}66;
+        animation: fadeInOut 1.6s ease forwards;
+      `;
+      if (!document.getElementById('sf-admin-fade-kf')) {
+        const st = document.createElement('style');
+        st.id = 'sf-admin-fade-kf';
+        st.textContent = '@keyframes fadeInOut {0%{opacity:0;transform:translate(-50%,-40%) scale(.9)}15%{opacity:1;transform:translate(-50%,-50%) scale(1)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(.95)}}';
+        document.head.appendChild(st);
+      }
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1700);
+    }
+    function rainCoins() {
+      D.addCoins(10000);
+      onCoinsChanged && onCoinsChanged();
+      force(t => t + 1);
+      // Visual coin rain — 40 spinning $ divs falling from top.
+      for (let i = 0; i < 40; i++) {
+        const c = document.createElement('div');
+        c.textContent = '🪙';
+        c.style.cssText = `position:fixed; left:${Math.random()*100}%; top:-30px; font-size:${18+Math.random()*22}px; z-index:9998; pointer-events:none; animation: coinFall ${1.4+Math.random()*1.2}s linear forwards; animation-delay:${Math.random()*0.6}s`;
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 2800);
+      }
+      if (!document.getElementById('sf-coin-fall-kf')) {
+        const st = document.createElement('style');
+        st.id = 'sf-coin-fall-kf';
+        st.textContent = '@keyframes coinFall {0%{transform:translateY(0) rotate(0)}100%{transform:translateY(110vh) rotate(720deg)}}';
+        document.head.appendChild(st);
+      }
+      flash('+10,000 COINS', '#ffd76a');
+    }
+    function giveMillion() {
+      D.setCoins ? D.setCoins(1000000) : D.addCoins(1000000 - D.getCoins());
+      onCoinsChanged && onCoinsChanged();
+      force(t => t + 1);
+      flash('MILLIONAIRE MODE', '#ffd76a');
+    }
+    function giveBillion() {
+      D.setCoins ? D.setCoins(999999999) : D.addCoins(999999999 - D.getCoins());
+      onCoinsChanged && onCoinsChanged();
+      force(t => t + 1);
+      flash('999,999,999 COINS', '#ff9a3c');
+    }
+    function unlockLegends() {
+      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS]];
+      let n = 0;
+      for (const [kind, list] of kinds) {
+        for (const item of (list || [])) {
+          if (item.rarity === 'legendary' && !D.isOwned(kind, item.id, item)) {
+            D.ownItem(kind, item.id); n++;
+          }
+        }
+      }
+      force(t => t + 1);
+      flash(`+${n} LEGENDARIES`, '#ffd76a');
+    }
+    function rainbowMe() {
+      const palette = ['#ff5b6e','#ff9a3c','#ffd76a','#5bff8a','#5cf6ff','#a07bff','#ff6ac1'];
+      const c = palette[Math.floor(Math.random() * palette.length)];
+      D.setPlayerColor && D.setPlayerColor(D.getUser(), c);
+      flash('RAINBOW ROLL', c);
+      force(t => t + 1);
+    }
+    function starName() {
+      const cur = (D.getDisplayName && D.getDisplayName(D.getUser())) || D.getUser();
+      const decorated = cur.startsWith('⭐') ? cur : `⭐ ${cur.replace(/^⭐\s*/, '')} ⭐`;
+      D.setDisplayName && D.setDisplayName(D.getUser(), decorated.slice(0, 20));
+      flash('LEGEND NAME UNLOCKED', '#ffd76a');
+      force(t => t + 1);
+    }
+    function spawnFans() {
+      const names = ['xSt1ckLord','BowKing77','FrostQueen','Vexo','PixelPunch','Razer','Krang_2k','MintCake','NeonRaven','BoomGuy'];
+      let n = 0;
+      for (const nm of names) { if (D.addFriend && D.addFriend(nm)) n++; }
+      flash(`+${n} FANS ADDED`, '#5bff8a');
+      force(t => t + 1);
+    }
+    function unbanEveryone() {
+      const list = D.getBanned ? D.getBanned() : [];
+      if (list.length === 0) { flash('BAN LIST ALREADY EMPTY', '#c9b4dc'); return; }
+      for (const n of list) D.removeBan && D.removeBan(n);
+      flash(`${list.length} UNBANNED`, '#5bff8a');
+      force(t => t + 1);
+    }
+    function resetCodes() {
+      try { localStorage.removeItem('sf_redeemed_v1'); localStorage.removeItem('sf_redeemed_v1__' + D.getUser()); } catch(e){}
+      flash('CODES REUSABLE AGAIN', '#5cf6ff');
+      force(t => t + 1);
+    }
+    function circusMode() {
+      // Flip theme + rainbow player color + star name + 500 coins for fun.
+      rainbowMe();
+      starName();
+      D.addCoins(500);
+      onCoinsChanged && onCoinsChanged();
+      flash('🎪 CIRCUS MODE 🎪', '#ff6ac1');
+      force(t => t + 1);
+    }
     function wipeProgress() {
       if (!confirm('WIPE this profile? Coins, cosmetics, friends, and the profile itself — all gone. This cannot be undone.')) return;
       const name = D.getUser();
@@ -5380,6 +5490,35 @@
               <Icon id="check" size={13} style={{verticalAlign:'middle', marginRight:6}}/>
               Unlock ALL hats / outfits / faces / trails
             </button>
+          </div>
+          {/* SUPER POWERS — the fun buttons */}
+          <div style={{ padding:'0 18px 12px' }}>
+            <div style={{ fontSize:11, letterSpacing:'.2em', color:'#ff9a3c', marginBottom:6 }}>⚡ SUPER POWERS</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:6 }}>
+              {[
+                { label:'🪙 Rain Coins',      fn: rainCoins,       bg:'linear-gradient(180deg, #ffd76a, #ff9a3c)', color:'#1a0e22' },
+                { label:'💰 Millionaire',     fn: giveMillion,     bg:'linear-gradient(180deg, #ffd76a, #a07214)', color:'#1a0e22' },
+                { label:'💎 999M Coins',      fn: giveBillion,     bg:'linear-gradient(180deg, #ff9a3c, #6c1a0e)', color:'#fff' },
+                { label:'✨ Grant Legends',   fn: unlockLegends,   bg:'linear-gradient(180deg, #a07bff, #4a2ca0)', color:'#fff' },
+                { label:'🌈 Rainbow Me',      fn: rainbowMe,       bg:'linear-gradient(180deg, #ff6ac1, #a07bff)', color:'#fff' },
+                { label:'⭐ Star Name',       fn: starName,        bg:'linear-gradient(180deg, #ffd76a, #ff9a3c)', color:'#1a0e22' },
+                { label:'👥 Spawn Fans',      fn: spawnFans,       bg:'linear-gradient(180deg, #7bff8a, #2ca050)', color:'#0a2614' },
+                { label:'🧹 Unban All',       fn: unbanEveryone,   bg:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' },
+                { label:'🔓 Reset Codes',     fn: resetCodes,      bg:'linear-gradient(180deg, #5cf6ff, #2a7bff)', color:'#001428' },
+                { label:'🎪 Circus Mode',     fn: circusMode,      bg:'linear-gradient(180deg, #ff6ac1, #ff5b6e)', color:'#fff' },
+              ].map(cmd => (
+                <button key={cmd.label} onClick={cmd.fn}
+                  style={{
+                    background: cmd.bg, color: cmd.color,
+                    border:'none', borderRadius:8, padding:'10px 12px',
+                    fontFamily:"'Rajdhani', sans-serif", fontWeight:800, letterSpacing:'.04em',
+                    fontSize:13, cursor:'pointer', textAlign:'left',
+                    boxShadow:'0 2px 0 rgba(0,0,0,.35)',
+                  }}>
+                  {cmd.label}
+                </button>
+              ))}
+            </div>
           </div>
           {/* MODERATION — bans + kicks */}
           <AdminBansSection onChange={() => force(t => t + 1)} />
