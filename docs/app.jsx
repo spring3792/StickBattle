@@ -2530,6 +2530,28 @@
           try { item.draw(ctx, 5 - i, 20, color || '#fff'); } catch(e){}
           ctx.restore();
         }
+      } else if (slot === 'aura') {
+        // Tiny stickman silhouette so the aura has something to hug.
+        ctx.save();
+        try { item.draw(ctx, 0); } catch(e){}
+        ctx.restore();
+        // Little figure on top of the aura so it reads as an aura.
+        ctx.fillStyle = color || '#5bf';
+        ctx.beginPath(); ctx.arc(0, -22, 5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = dark || '#222'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(0, -6); ctx.stroke();
+      } else if (slot === 'halo') {
+        // Small head with the halo perched above it.
+        const g = ctx.createRadialGradient(-3, -20, 1, 0, -15, 13);
+        g.addColorStop(0, lighten(color, .25)); g.addColorStop(.7, color || '#5bf'); g.addColorStop(1, dark || '#222');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, -15, 12, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = dark || '#222'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, -15, 12, 0, Math.PI*2); ctx.stroke();
+        // draw halo above the head
+        ctx.save(); ctx.translate(0, -28);
+        try { item.draw(ctx, 0); } catch(e){}
+        ctx.restore();
       }
       ctx.restore();
     }, [slot, item, color, dark]);
