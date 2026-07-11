@@ -3509,12 +3509,14 @@
       // it off before entering the arena so the launch card shows NOT HOSTING
       // when they come back to the menu.
       try { localStorage.removeItem('sf_hosting_v2'); } catch(e){}
-      // ONLINE flavour: brief matchmaking overlay before dropping in.
+      // Normal PLAY skips the waiting-room lobby and drops straight into the
+      // fight. The lobby stage is a hosting-flavoured "waiting for other
+      // players" screen — pointless when it's just you vs bots.
       if (playMode === 'online') {
         setMatchmaking(true);
-        setTimeout(() => { setMatchmaking(false); _buildLobby(); }, 1400);
+        setTimeout(() => { setMatchmaking(false); _buildAndStartArena(); }, 1400);
       } else {
-        _buildLobby();
+        _buildAndStartArena();
       }
     }
     function _buildLobby() {
