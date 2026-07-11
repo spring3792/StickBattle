@@ -3505,6 +3505,10 @@
     }, [settings.edu]);
 
     function startLobby() {
+      // Normal PLAY is NOT hosting — if the user is currently hosting, turn
+      // it off before entering the arena so the launch card shows NOT HOSTING
+      // when they come back to the menu.
+      try { localStorage.removeItem('sf_hosting_v2'); } catch(e){}
       // ONLINE flavour: brief matchmaking overlay before dropping in.
       if (playMode === 'online') {
         setMatchmaking(true);
