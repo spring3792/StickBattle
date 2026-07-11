@@ -219,6 +219,8 @@ window.StickFightGame = (function () {
       outfit: profile.outfit,
       face: profile.face,
       trail: profile.trail,
+      aura: profile.aura,
+      halo: profile.halo,
       buffs,
       maxHp: buffs.maxHp,
       hp: buffs.hp,
@@ -3735,6 +3737,11 @@ window.StickFightGame = (function () {
     if (p.flipped) ctx.scale(1, -1);
     ctx.scale(size, size);
 
+    // AURA — behind everything so it feels like a glow around the whole stickman.
+    if (p.aura && p.aura.draw) {
+      try { p.aura.draw(ctx, p.animPhase * 60); } catch(e){}
+    }
+
     // outfit BEHIND body if marked behind:true (capes etc)
     if (p.outfit && p.outfit.draw && p.outfit.behind) {
       ctx.save(); ctx.translate(0, -22);
@@ -3873,6 +3880,13 @@ window.StickFightGame = (function () {
     if (p.hat && p.hat.draw) {
       ctx.save(); ctx.translate(cx, cy - headR + 3);
       try { p.hat.draw(ctx); } catch(e){}
+      ctx.restore();
+    }
+
+    // HALO — floats above the head/hat.
+    if (p.halo && p.halo.draw) {
+      ctx.save(); ctx.translate(cx, cy - headR - 6);
+      try { p.halo.draw(ctx, p.animPhase * 60); } catch(e){}
       ctx.restore();
     }
 

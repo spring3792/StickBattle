@@ -2053,10 +2053,14 @@
     const ownedOutfits = D.OUTFITS ? D.OUTFITS.filter(o => D.isOwned('outfit', o.id, o)) : [];
     const ownedFaces   = D.FACES   ? D.FACES.filter(f => D.isOwned('face', f.id, f))     : [];
     const ownedTrails  = D.TRAILS  ? D.TRAILS.filter(t => D.isOwned('trail', t.id, t))   : [];
+    const ownedAuras   = D.AURAS   ? D.AURAS.filter(a => D.isOwned('aura', a.id, a))     : [];
+    const ownedHalos   = D.HALOS   ? D.HALOS.filter(h => D.isOwned('halo', h.id, h))     : [];
     const eqHat    = D.getEquipped(active, 'hat');
     const eqOutfit = D.getEquipped(active, 'outfit');
     const eqFace   = D.getEquipped(active, 'face');
     const eqTrail  = D.getEquipped(active, 'trail');
+    const eqAura   = D.getEquipped(active, 'aura');
+    const eqHalo   = D.getEquipped(active, 'halo');
     function CosmeticRow({ label, list, eq, kind, dot }) {
       if (!list || list.length === 0) return null;
       return (
@@ -2131,6 +2135,8 @@
                 hat={(D.HATS    || []).find(h => h.id === eqHat)    || (D.HATS    && D.HATS[0])}
                 outfit={(D.OUTFITS || []).find(o => o.id === eqOutfit) || (D.OUTFITS && D.OUTFITS[0])}
                 face={(D.FACES   || []).find(f => f.id === eqFace)   || (D.FACES   && D.FACES[0])}
+                aura={(D.AURAS   || []).find(a => a.id === eqAura)   || (D.AURAS   && D.AURAS[0])}
+                halo={(D.HALOS   || []).find(h => h.id === eqHalo)   || (D.HALOS   && D.HALOS[0])}
                 animated/>
             </div>
           </div>
@@ -2176,6 +2182,8 @@
           <CosmeticRow label="OUTFIT" list={ownedOutfits} eq={eqOutfit} kind="outfit" dot="#5cf6ff"/>
           <CosmeticRow label="FACE"   list={ownedFaces}   eq={eqFace}   kind="face"   dot="#ffd76a"/>
           <CosmeticRow label="TRAIL"  list={ownedTrails}  eq={eqTrail}  kind="trail"  dot="#a07bff"/>
+          <CosmeticRow label="AURA"   list={ownedAuras}   eq={eqAura}   kind="aura"   dot="#5bff8a"/>
+          <CosmeticRow label="HALO"   list={ownedHalos}   eq={eqHalo}   kind="halo"   dot="#ff6ac1"/>
         </div>
       </div>
     );
@@ -2282,6 +2290,8 @@
       { id:'outfit', label:'Outfit', icon:'cos_outfit', items:D.OUTFITS },
       { id:'face',   label:'Face',   icon:'cos_face',   items:D.FACES   },
       { id:'trail',  label:'Trail',  icon:'cos_trail',  items:D.TRAILS  },
+      { id:'aura',   label:'Aura',   icon:'sparkle',    items:D.AURAS || [] },
+      { id:'halo',   label:'Halo',   icon:'crown',      items:D.HALOS || [] },
     ];
     const currentTab = tabs.find(t => t.id === tab);
 
@@ -2390,7 +2400,7 @@
   }
 
   // Stickman preview with all slots
-  function MiniStickman({ color, dark, hat, outfit, face, animated = false }) {
+  function MiniStickman({ color, dark, hat, outfit, face, aura, halo, animated = false }) {
     const ref = useRef(null);
     useEffect(() => {
       const c = ref.current; if (!c) return;
@@ -2403,6 +2413,11 @@
         // shadow
         ctx.fillStyle = 'rgba(0,0,0,.35)';
         ctx.beginPath(); ctx.ellipse(0, 33, 10, 3, 0, 0, Math.PI*2); ctx.fill();
+
+        // AURA — behind everything
+        if (aura && aura.draw) {
+          try { aura.draw(ctx, t); } catch(e){}
+        }
 
         if (outfit && outfit.draw && outfit.behind) {
           ctx.save(); ctx.translate(0, -32); outfit.draw(ctx); ctx.restore();
@@ -2455,12 +2470,18 @@
         if (hat && hat.draw) {
           ctx.save(); ctx.translate(0, cy - headR + 2); hat.draw(ctx); ctx.restore();
         }
+        // HALO — floats above the hat
+        if (halo && halo.draw) {
+          ctx.save(); ctx.translate(0, cy - headR - 6);
+          try { halo.draw(ctx, t); } catch(e){}
+          ctx.restore();
+        }
         ctx.restore();
-        if (animated) { t++; raf = requestAnimationFrame(draw); }
+        if (animated || aura || halo) { t++; raf = requestAnimationFrame(draw); }
       }
       draw();
       return () => { if (raf) cancelAnimationFrame(raf); };
-    }, [color, dark, hat, outfit, face, animated]);
+    }, [color, dark, hat, outfit, face, aura, halo, animated]);
     return <canvas ref={ref} width={160} height={190} style={{ width:160, height:190 }} />;
   }
 
@@ -3527,10 +3548,14 @@
         const eqOutfitId = isHumanSlot ? D.getEquipped(D.getUser(), 'outfit') : null;
         const eqFaceId   = isHumanSlot ? D.getEquipped(D.getUser(), 'face')   : null;
         const eqTrailId  = isHumanSlot ? D.getEquipped(D.getUser(), 'trail')  : null;
+        const eqAuraId   = isHumanSlot ? D.getEquipped(D.getUser(), 'aura')   : null;
+        const eqHaloId   = isHumanSlot ? D.getEquipped(D.getUser(), 'halo')   : null;
         const hatObj    = (eqHatId    && D.HATS.find(h    => h.id    === eqHatId))    || D.HATS[0];
         const outfitObj = (eqOutfitId && D.OUTFITS.find(o => o.id    === eqOutfitId)) || D.OUTFITS[0];
         const faceObj   = (eqFaceId   && D.FACES.find(f   => f.id    === eqFaceId))   || D.FACES[0];
         const trailObj  = (eqTrailId  && D.TRAILS.find(t  => t.id    === eqTrailId))  || D.TRAILS[0];
+        const auraObj   = (eqAuraId   && (D.AURAS   || []).find(a => a.id === eqAuraId))   || (D.AURAS   && D.AURAS[0]);
+        const haloObj   = (eqHaloId   && (D.HALOS   || []).find(h => h.id === eqHaloId))   || (D.HALOS   && D.HALOS[0]);
         built.push({
           _slot: i, _score: 0, _target: settings.target,
           isBot, lockedBot: isBot,
@@ -3540,6 +3565,8 @@
           outfitId: outfitObj.id, outfit: outfitObj,
           faceId: faceObj.id, face: faceObj,
           trailId: trailObj.id, trail: trailObj,
+          auraId: auraObj && auraObj.id, aura: auraObj,
+          haloId: haloObj && haloObj.id, halo: haloObj,
           buffs: [],
         });
       }
@@ -3645,6 +3672,7 @@
     const arenaProfiles = useMemo(() => profiles.map(p => ({
       name: p.name, color: p.color, darkColor: p.darkColor,
       hat: p.hat, outfit: p.outfit, face: p.face, trail: p.trail,
+      aura: p.aura, halo: p.halo,
       isBot: p.isBot, buffs: p.buffs,
       // For coin rush, the in-arena score is coins picked up in the
       // current round — always start at 0, not from persistent _score
@@ -5283,7 +5311,7 @@
       force(t => t + 1);
     }
     function unlockAll() {
-      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS]];
+      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS], ['aura', D.AURAS || []], ['halo', D.HALOS || []]];
       let count = 0;
       for (const [kind, list] of kinds) {
         for (const item of (list || [])) {
@@ -5357,7 +5385,7 @@
       flash('999,999,999 COINS', '#ff9a3c');
     }
     function unlockLegends() {
-      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS]];
+      const kinds = [['hat', D.HATS], ['outfit', D.OUTFITS], ['face', D.FACES], ['trail', D.TRAILS], ['aura', D.AURAS || []], ['halo', D.HALOS || []]];
       let n = 0;
       for (const [kind, list] of kinds) {
         for (const item of (list || [])) {

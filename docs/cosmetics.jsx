@@ -2206,5 +2206,167 @@ window.SFCosmetics = (function () {
     },
   ];
 
-  return { HATS, OUTFITS, FACES, TRAILS };
+  // ---------- AURAS ----------
+  // Drawn BEHIND the stickman as a radial glow / ring at foot level.
+  // origin (0,0) is the feet (same as drawStickman). Aura scales up.
+  const AURAS = [
+    { id:'none', name:'No Aura', draw: () => {} },
+    { id:'fire', name:'Fire Aura', draw: (ctx, t) => {
+        const pulse = (Math.sin((t || 0) * 0.06) + 1) * 0.5;
+        const R = 26 + pulse * 3;
+        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        g.addColorStop(0, 'rgba(255,215,106,.55)');
+        g.addColorStop(0.55, 'rgba(255,77,46,.35)');
+        g.addColorStop(1, 'rgba(255,77,46,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+      } },
+    { id:'ice', name:'Ice Aura', draw: (ctx, t) => {
+        const R = 24;
+        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        g.addColorStop(0, 'rgba(180,240,255,.6)');
+        g.addColorStop(0.6, 'rgba(92,246,255,.30)');
+        g.addColorStop(1, 'rgba(92,246,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        // snowflake dots orbiting
+        for (let i = 0; i < 5; i++) {
+          const a = ((t || 0) * 0.02 + i * (Math.PI * 2 / 5));
+          const x = Math.cos(a) * 22, y = -18 + Math.sin(a) * 22;
+          ctx.fillStyle = '#eaffff';
+          ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI*2); ctx.fill();
+        }
+      } },
+    { id:'shadow', name:'Shadow Aura', draw: (ctx) => {
+        const R = 22;
+        const g = ctx.createRadialGradient(0, -18, 2, 0, -18, R);
+        g.addColorStop(0, 'rgba(30,20,60,.75)');
+        g.addColorStop(1, 'rgba(30,20,60,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+      } },
+    { id:'rainbow', name:'Rainbow Aura', draw: (ctx, t) => {
+        const R = 24;
+        const cols = ['#ff5b6e','#ff9a3c','#ffd76a','#5bff8a','#5cf6ff','#a07bff','#ff6ac1'];
+        for (let i = 0; i < cols.length; i++) {
+          const a = ((t || 0) * 0.03 + i * (Math.PI * 2 / cols.length));
+          const x = Math.cos(a) * R, y = -18 + Math.sin(a) * R;
+          ctx.fillStyle = cols[i]; ctx.globalAlpha = 0.7;
+          ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      } },
+    { id:'electric', name:'Electric Aura', draw: (ctx, t) => {
+        const R = 22;
+        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        g.addColorStop(0, 'rgba(255,255,180,.55)');
+        g.addColorStop(1, 'rgba(255,255,0,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        // jagged bolts
+        ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 1.4;
+        for (let i = 0; i < 4; i++) {
+          const a = ((t || 0) * 0.15 + i * Math.PI / 2);
+          ctx.beginPath();
+          let x = Math.cos(a) * 8, y = -18 + Math.sin(a) * 8;
+          ctx.moveTo(x, y);
+          for (let k = 1; k <= 3; k++) {
+            const r2 = 8 + k * 5;
+            const off = (k % 2 === 0 ? 0.3 : -0.3);
+            x = Math.cos(a + off) * r2; y = -18 + Math.sin(a + off) * r2;
+            ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+      } },
+    { id:'gold', name:'Golden Aura', draw: (ctx, t) => {
+        const pulse = (Math.sin((t || 0) * 0.05) + 1) * 0.5;
+        const R = 25 + pulse * 2;
+        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        g.addColorStop(0, 'rgba(255,241,160,.7)');
+        g.addColorStop(0.5, 'rgba(255,215,106,.4)');
+        g.addColorStop(1, 'rgba(200,144,20,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        // sparkles
+        for (let i = 0; i < 6; i++) {
+          const a = ((t || 0) * 0.04 + i * (Math.PI * 2 / 6));
+          const x = Math.cos(a) * 20, y = -18 + Math.sin(a) * 20;
+          ctx.fillStyle = '#fff2a6';
+          ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI*2); ctx.fill();
+        }
+      } },
+  ];
+
+  // ---------- HALOS ----------
+  // Drawn above the head/hat. Origin (0,0) is roughly the top of the head
+  // (game.jsx calls with translate to `cy - headR - 6`).
+  const HALOS = [
+    { id:'none', name:'No Halo', draw: () => {} },
+    { id:'angel', name:'Angel Halo', draw: (ctx, t) => {
+        // Golden flat halo ring floating slightly above.
+        ctx.save();
+        ctx.strokeStyle = '#fff2a6'; ctx.lineWidth = 2.2;
+        ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.ellipse(0, -3, 12, 4, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#c89014'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.ellipse(0, -3, 12, 4, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      } },
+    { id:'devil', name:'Devil Horns', draw: (ctx) => {
+        ctx.fillStyle = '#ff5b6e';
+        ctx.beginPath();
+        ctx.moveTo(-8, 0); ctx.lineTo(-11, -8); ctx.lineTo(-4, -2); ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(8, 0); ctx.lineTo(11, -8); ctx.lineTo(4, -2); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#6c1a0e'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(-11, -8); ctx.lineTo(-4, -2); ctx.closePath(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(11, -8); ctx.lineTo(4, -2); ctx.closePath(); ctx.stroke();
+      } },
+    { id:'neon', name:'Neon Ring', draw: (ctx, t) => {
+        const pulse = (Math.sin((t || 0) * 0.1) + 1) * 0.5;
+        ctx.save();
+        ctx.strokeStyle = '#5cf6ff';
+        ctx.lineWidth = 2 + pulse;
+        ctx.shadowColor = '#5cf6ff'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.ellipse(0, -2, 13, 4.5, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      } },
+    { id:'flame', name:'Flame Crown', draw: (ctx, t) => {
+        // Three flickering flame tongues.
+        const flick = Math.sin((t || 0) * 0.25);
+        const cols = ['#ffd76a','#ff9a3c','#ff4d2e'];
+        for (let i = -1; i <= 1; i++) {
+          const h = 8 + Math.abs(flick + i * 0.4) * 3;
+          const x = i * 5;
+          ctx.fillStyle = cols[i + 1];
+          ctx.beginPath();
+          ctx.moveTo(x - 2, 2);
+          ctx.quadraticCurveTo(x - 3, -h * 0.6, x, -h);
+          ctx.quadraticCurveTo(x + 3, -h * 0.6, x + 2, 2);
+          ctx.closePath(); ctx.fill();
+        }
+      } },
+    { id:'crown_halo', name:'Kingly Halo', draw: (ctx) => {
+        // Halo ring with small orbs.
+        ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.ellipse(0, -3, 13, 4, 0, 0, Math.PI * 2); ctx.stroke();
+        for (let i = 0; i < 6; i++) {
+          const a = i * (Math.PI * 2 / 6);
+          const x = Math.cos(a) * 13, y = -3 + Math.sin(a) * 4;
+          ctx.fillStyle = '#fff2a6';
+          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
+        }
+      } },
+    { id:'ghost', name:'Ghost Halo', draw: (ctx, t) => {
+        const bob = Math.sin((t || 0) * 0.08) * 1.5;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(220,200,255,.75)';
+        ctx.setLineDash([4, 3]); ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.ellipse(0, -3 + bob, 12, 4, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      } },
+  ];
+
+  return { HATS, OUTFITS, FACES, TRAILS, AURAS, HALOS };
 })();

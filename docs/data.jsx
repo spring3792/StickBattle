@@ -30,6 +30,8 @@ window.GameData = (function () {
     outfit: ['none', 'tee', 'hoodie'],
     face:   ['default', 'none', 'smile', 'glasses'],
     trail:  ['none', 'dust'],
+    aura:   ['none'],
+    halo:   ['none'],
   };
   function tagRarity(list, kind) {
     const starters = STARTER_IDS[kind] || ['none'];
@@ -49,12 +51,16 @@ window.GameData = (function () {
   const OUTFITS = tagRarity(COS.OUTFITS, 'outfit');
   const FACES   = tagRarity(COS.FACES,   'face');
   const TRAILS  = tagRarity(COS.TRAILS,  'trail');
+  const AURAS   = tagRarity(COS.AURAS   || [], 'aura');
+  const HALOS   = tagRarity(COS.HALOS   || [], 'halo');
 
   const COSMETIC_KINDS = [
     { id:'hat',    list:HATS    },
     { id:'outfit', list:OUTFITS },
     { id:'face',   list:FACES   },
     { id:'trail',  list:TRAILS  },
+    { id:'aura',   list:AURAS   },
+    { id:'halo',   list:HALOS   },
   ];
 
   // Coin colors per rarity (for borders/glows in shop)
@@ -679,7 +685,7 @@ window.GameData = (function () {
   function catIconId(c) { return ({ move:'cat_move', def:'cat_def', off:'cat_off', util:'cat_util', fun:'cat_fun' })[c] || 'star'; }
 
   return {
-    PLAYER_COLORS, HATS, OUTFITS, FACES, TRAILS,
+    PLAYER_COLORS, HATS, OUTFITS, FACES, TRAILS, AURAS, HALOS,
     POWERUPS, MODES, STAGES,
     pickRandom, pickRandomTier, eduTitle, eduSub, catLabel, catIconId,
     // currency + crates
