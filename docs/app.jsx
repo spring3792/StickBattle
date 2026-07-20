@@ -145,22 +145,34 @@
       'Krang','MintCake','NeonRaven','BoomGuy','ChessMonk','Yeet','PingPong','Apex22','Lunar'];
     const PALETTE = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#ffffff'];
     const [joined, setJoined] = useState([]);
-    const [muted, setMuted] = useState(false);
+    // Read + write the same sf_muted flag other components use so this
+    // toggle actually mutes SFX instead of just flipping a local state.
+    const [muted, setMuted] = useState(() => {
+      try { return localStorage.getItem('sf_muted') === '1'; } catch(e){ return false; }
+    });
+    const applyMute = (m) => {
+      setMuted(m);
+      try { localStorage.setItem('sf_muted', m ? '1' : '0'); } catch(e){}
+    };
     // Host role — 'player' = host plays in slot 0, 'spectator' = host watches
     // and lets the joined players + bots fight it out.
     const [hostRole, setHostRole] = useState('player');
     const hostCode = React.useMemo(() => {
       try {
-        let c = localStorage.getItem('sf_host_code_v1');
+        const u = D.getUser();
+        // Per-user namespaced key — before, the first-open code was global
+        // so every profile that logged in later saw the same host code.
+        const key = 'sf_host_code_v1__' + u;
+        let c = localStorage.getItem(key);
         if (!c) {
           c = '';
           const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-          const u = D.getUser();
           for (let i = 0; i < 6; i++) c += ch[Math.floor((u.charCodeAt(i % u.length) + i * 7) % ch.length)];
-          localStorage.setItem('sf_host_code_v1', c);
+          localStorage.setItem(key, c);
         }
         return c;
       } catch(e) { return 'HOST01'; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     // No auto-spawn — lobby starts empty. Host either invites friends or
     // adds bots manually. Match makes it clear who's joining and why.
@@ -195,7 +207,7 @@
             Back to hub
           </button>
           <div className="row" style={{ gap:8 }}>
-            <button className="btn sm ghost" onClick={() => setMuted(m => !m)}>
+            <button className="btn sm ghost" onClick={() => applyMute(!muted)}>
               <Icon id={muted ? 'x' : 'check'} size={12} style={{verticalAlign:'middle', marginRight:4}}/>
               {muted ? 'Lobby muted' : 'Sounds on'}
             </button>
@@ -533,16 +545,20 @@
     }
     const hostCode = React.useMemo(() => {
       try {
-        let c = localStorage.getItem('sf_host_code_v1');
+        const u = D.getUser();
+        // Per-user namespaced key — before, the first-open code was global
+        // so every profile that logged in later saw the same host code.
+        const key = 'sf_host_code_v1__' + u;
+        let c = localStorage.getItem(key);
         if (!c) {
           c = '';
           const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-          const u = D.getUser();
           for (let i = 0; i < 6; i++) c += ch[Math.floor((u.charCodeAt(i % u.length) + i * 7) % ch.length)];
-          localStorage.setItem('sf_host_code_v1', c);
+          localStorage.setItem(key, c);
         }
         return c;
       } catch(e) { return 'HOST01'; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     function copyCode() {
       try { navigator.clipboard && navigator.clipboard.writeText(hostCode); } catch(e){}
@@ -2226,7 +2242,7 @@
             boxShadow:'0 0 10px #5bff8a',
           }}/>
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:24, letterSpacing:'.1em', color:'#5bff8a' }}>
-            {total} / 4 PLAYERS JOINED
+            {total} / {total} PLAYERS JOINED
           </div>
           <div style={{ flex:1 }}/>
           <span className="pill" style={{
@@ -3624,7 +3640,7 @@
     }
     // Random mode + map. Used by Quick Match and the "+ Random" queue button.
     function randomMatchItem() {
-      const modes = ['fight','sumo','koth','bomb','last','parkour','golf','td'];
+      const modes = ['fight','sumo','koth','bomb','last','parkour','golf','td','coins'];
       const m = modes[Math.floor(Math.random() * modes.length)];
       const item = { mode: m };
       if (m === 'td') {
@@ -3736,15 +3752,27 @@
     }, []);
     const [confirmQuit, setConfirmQuit] = useState(false);
 
-    // Esc key during any in-game stage toggles the pause / quit modal.
+    // Esc key during any in-game stage toggles the pause / quit modal —
+    // but not while a modal (profile, settings, admin, codes, friends, etc.)
+    // is open, so Escape closes the modal first and doesn't stack the
+    // PAUSED overlay on top of it.
     useEffect(() => {
       if (stage === 'launch') return;
       const onKey = (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); setConfirmQuit(v => !v); }
+        if (e.key !== 'Escape') return;
+        if (showSettings) { setShowSettings(false); return; }
+        if (showProfile)  { setShowProfile(false); return; }
+        if (showAdmin)    { setShowAdmin(false); return; }
+        if (showCodes)    { setShowCodes(false); return; }
+        if (showCrates)   { setShowCrates(false); return; }
+        if (showFriends)  { setShowFriends(false); return; }
+        if (showQueue)    { setShowQueue(false); return; }
+        if (showTrade)    { setShowTrade(false); return; }
+        e.preventDefault(); setConfirmQuit(v => !v);
       };
       window.addEventListener('keydown', onKey);
       return () => window.removeEventListener('keydown', onKey);
-    }, [stage]);
+    }, [stage, showSettings, showProfile, showAdmin, showCodes, showCrates, showFriends, showQueue, showTrade]);
 
     // Pre-launch gate: must Log In or Sign Up before the hub appears.
     if (needLogin) {
@@ -3808,7 +3836,7 @@
                  onStart={startMatch} onBack={() => setStage('launch')} />
         )}
         {stage === 'arena' && (
-          <Arena key={profiles.reduce((s,p)=>s+p._score,0)}
+          <Arena key={profiles.map(p => p._score).join('|')}
                  profiles={arenaProfiles}
                  edu={(settings.mode === 'td' || settings.mode === 'golf') ? false : settings.edu}
                  mode={settings.mode}
@@ -4735,6 +4763,10 @@
     const canvasRef = useRef(null);
     const [color, setColor] = useState('#ffd76a');
     const [brush, setBrush] = useState(6);
+    // Refs mirror the state so the mouse handlers can read fresh color/brush
+    // without needing to be re-bound (which cleared the canvas every time).
+    const colorRef = useRef(color); colorRef.current = color;
+    const brushRef = useRef(brush); brushRef.current = brush;
     useEffect(() => {
       const c = canvasRef.current;
       if (!c) return;
@@ -4753,7 +4785,7 @@
         if (!drawing) return;
         e.preventDefault();
         const p = pos(e);
-        ctx.strokeStyle = color; ctx.lineWidth = brush;
+        ctx.strokeStyle = colorRef.current; ctx.lineWidth = brushRef.current;
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
         lastX = p.x; lastY = p.y;
@@ -4773,7 +4805,8 @@
         c.removeEventListener('touchmove', move);
         window.removeEventListener('touchend', up);
       };
-    }, [color, brush]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     function clear() {
       const c = canvasRef.current; const ctx = c.getContext('2d');
       ctx.fillStyle = '#1a0e22';
@@ -4868,6 +4901,7 @@
       { id:'parkour', label:'Parkour Race' },
       { id:'golf',    label:'Mini Golf' },
       { id:'td',      label:'Tower Defense' },
+      { id:'coins',   label:'Coin Rush' },
     ];
     const [pickedMode, setPickedMode] = useState(settings.mode || 'fight');
     const [pickedMap, setPickedMap] = useState('random');
@@ -5448,7 +5482,10 @@
     }
     function starName() {
       const cur = (D.getDisplayName && D.getDisplayName(D.getUser())) || D.getUser();
-      const decorated = cur.startsWith('⭐') ? cur : `⭐ ${cur.replace(/^⭐\s*/, '')} ⭐`;
+      // Strip existing ⭐ decorations (any position, with whitespace) so
+      // repeated presses don't stack "⭐ ⭐ ⭐ …" and slowly eat the name.
+      const bare = cur.replace(/[⭐]/g, '').trim();
+      const decorated = `⭐ ${bare} ⭐`;
       D.setDisplayName && D.setDisplayName(D.getUser(), decorated.slice(0, 20));
       flash('LEGEND NAME UNLOCKED', '#ffd76a');
       force(t => t + 1);
@@ -5881,12 +5918,16 @@
     };
     function resetProgress() {
       if (!confirm("Reset everything? Deletes custom question sets, owned cosmetics, coins, codes, and preferences.")) return;
-      // Global (non-per-user) keys.
-      ['sf_custom_sets', 'sf_ai_sets', 'sf_api_key', 'sf_muted', 'sf_admin_v1', 'sf_hosting_v2']
-        .forEach(k => localStorage.removeItem(k));
-      // Per-user progress: sweep every namespaced variant too, otherwise
-      // non-default profiles keep their coins/cosmetics/redeemed codes.
-      const perUser = ['sf_coins_v1','sf_owned_v1','sf_redeemed_v1','sf_friends_v1','sf_trades_v1'];
+      // Global (non-per-user) keys — including the correct _v1 suffixed
+      // question-set keys that the previous version missed.
+      const globals = [
+        'sf_custom_sets_v1', 'sf_ai_sets_v1', 'sf_muted', 'sf_admin_v1',
+        'sf_hosting_v2', 'sf_host_code_v1', 'sf_dash_best_v1',
+        'sf_lobby_best_v2', 'sf_spectator_v1', 'sf_play_mode_v1',
+      ];
+      globals.forEach(k => localStorage.removeItem(k));
+      // Per-user progress: sweep every namespaced variant too.
+      const perUser = ['sf_coins_v1','sf_owned_v1','sf_redeemed_v1','sf_friends_v1','sf_trades_v1','sf_profile_meta_v1'];
       const toDelete = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);

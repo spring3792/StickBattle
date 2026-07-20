@@ -746,7 +746,10 @@ window.StickFightGame = (function () {
           spin: Math.random() * Math.PI * 2,
         });
       }
-      const target = state.players[0]?._target || 5;
+      // Prefer the human's target — reading slot 0 is wrong when a bot or
+      // spectator occupies that slot.
+      const human = state.players.find(p => !p.isBot);
+      const target = (human && human._target) || state.players[0]?._target || 5;
       for (let i = (state.coinDrops || []).length - 1; i >= 0; i--) {
         const c = state.coinDrops[i];
         c.vy = Math.min(5, (c.vy || 0) + 0.18);
@@ -1691,7 +1694,10 @@ window.StickFightGame = (function () {
     if (p.dashCd > 0) p.dashCd--;
 
     let g = GRAV * (b.gravMul || 1);
-    if (b.gravFlip && input.down && !p.onGround) p.flipped = !p.flipped;
+    // Only flip on the EDGE of down being pressed — before, holding down
+    // toggled gravity every frame (rapid oscillation, ~60x/sec).
+    if (b.gravFlip && input.down && !p._downWasHeld && !p.onGround) p.flipped = !p.flipped;
+    p._downWasHeld = !!input.down;
     if (p.flipped) g = -g * 0.8;
     p.vy += g;
     if (p.vy > 18) p.vy = 18;
@@ -1908,7 +1914,7 @@ window.StickFightGame = (function () {
         p.score--;
       }
       // Achievement toasts for the human player only.
-      if (killer && !killer.isBot && state.mode !== 'last' && state.mode !== 'td') {
+      if (killer && !killer.isBot && state.mode !== 'last' && state.mode !== 'td' && state.mode !== 'koth' && state.mode !== 'coins') {
         if (!state.firstKill) {
           state.firstKill = true;
           spawnToast(state, 'FIRST KO', '#ffd76a');
