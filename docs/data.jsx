@@ -121,9 +121,13 @@ window.GameData = (function () {
     try {
       const list = (JSON.parse(localStorage.getItem(LS_USER_LIST) || '[]') || []).filter(n => n !== name);
       localStorage.setItem(LS_USER_LIST, JSON.stringify(list));
+      const keys = ['sf_coins_v1','sf_owned_v1','sf_friends_v1','sf_trades_v1','sf_redeemed_v1'];
       // Wipe namespaced keys for that user.
-      ['sf_coins_v1','sf_owned_v1','sf_friends_v1','sf_trades_v1','sf_redeemed_v1']
-        .forEach(k => localStorage.removeItem(k + '__' + name));
+      keys.forEach(k => localStorage.removeItem(k + '__' + name));
+      // DEFAULT_USER also has progress stored under the bare (un-namespaced)
+      // keys — wipe those too so re-creating "Player1" doesn't inherit the
+      // old profile's coins/cosmetics/friends/redeemed codes.
+      if (name === DEFAULT_USER) keys.forEach(k => localStorage.removeItem(k));
       // Wipe profile meta for that user.
       localStorage.removeItem('sf_profile_meta_v1__' + name);
     } catch(e){}
@@ -470,7 +474,15 @@ window.GameData = (function () {
       if (roll < w[r]) { pickedR = r; break; }
       roll -= w[r];
     }
-    const pool = byRarity[pickedR];
+    let pool = byRarity[pickedR];
+    // Fallback: if the chosen bucket happens to be empty (floating-point
+    // rounding, or Mythic Crate with common:0 falling through), pick any
+    // non-empty bucket so we never index into an empty array and return
+    // undefined.
+    if (!pool || pool.length === 0) {
+      pool = RARITY_LIST.map(r => byRarity[r]).find(a => a && a.length) || [];
+    }
+    if (pool.length === 0) return null;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 

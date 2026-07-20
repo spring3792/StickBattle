@@ -1121,7 +1121,7 @@
                     className={`pill ${settings.tdEndless ? 'on' : ''}`}
                     style={{ border:'none', cursor:'pointer', gap:6 }}>
                     <Icon id={settings.tdEndless ? 'check' : 'x'} size={14}/>
-                    {settings.tdEndless ? 'ON · Waves never end' : 'OFF · 7-wave campaign'}
+                    {settings.tdEndless ? 'ON · Waves never end' : 'OFF · 30-wave campaign'}
                   </button>
                 </div>
               </React.Fragment>
@@ -2318,7 +2318,8 @@
 
         <div style={{ display:'flex', justifyContent:'center', marginTop: 6 }}>
           <MiniStickman color={profile.color} dark={profile.darkColor}
-            hat={profile.hat} outfit={profile.outfit} face={profile.face} />
+            hat={profile.hat} outfit={profile.outfit} face={profile.face}
+            aura={profile.aura} halo={profile.halo} />
         </div>
 
         <input type="text" value={profile.name}
@@ -3559,8 +3560,10 @@
         if (isBot && chall && i === count - 1) {
           useName = chall.name; useColor = chall.color || useColor; useDark = mixToBlack(useColor, 0.55);
         }
-        // PARTY: friend bots fill the middle bot slots
-        else if (isBot && partyList.length > 0 && i > 0 && i < count - 1) {
+        // PARTY: friend bots fill any bot slot that isn't the challenge slot.
+        // (Previously restricted to i>0 && i<count-1 — for count=2 that range
+        // is empty, so party friends silently vanished from 1v1 matches.)
+        else if (isBot && partyList.length > 0 && !(chall && i === count - 1)) {
           const p = partyList.shift();
           if (p) { useName = p.name; useColor = p.color || useColor; useDark = mixToBlack(useColor, 0.55); }
         }
@@ -3640,6 +3643,14 @@
       // TD and Golf are continuous campaigns — when the engine signals a
       // winner, the match is already over. Skip the round/question/draft flow.
       if (settings.mode === 'td' || settings.mode === 'golf') {
+        // Null winner (e.g. TD base destroyed in solo mode) is a defeat, not
+        // a hang. Show the results screen with no winner so the human sees
+        // "DEFEAT" rather than sitting on a frozen arena forever.
+        if (winnerSlot === null || winnerSlot === undefined) {
+          setMatchWinner(null);
+          setStage('results');
+          return;
+        }
         const winner = np.find(p => p._slot === winnerSlot);
         if (winner) {
           if (!winner.isBot) { D.addCoins(50); refreshCoins(); }
@@ -5865,8 +5876,19 @@
     };
     function resetProgress() {
       if (!confirm("Reset everything? Deletes custom question sets, owned cosmetics, coins, codes, and preferences.")) return;
-      ['sf_custom_sets', 'sf_ai_sets', 'sf_api_key', 'sf_muted',
-       'sf_coins_v1', 'sf_owned_v1', 'sf_redeemed_v1', 'sf_admin_v1'].forEach(k => localStorage.removeItem(k));
+      // Global (non-per-user) keys.
+      ['sf_custom_sets', 'sf_ai_sets', 'sf_api_key', 'sf_muted', 'sf_admin_v1', 'sf_hosting_v2']
+        .forEach(k => localStorage.removeItem(k));
+      // Per-user progress: sweep every namespaced variant too, otherwise
+      // non-default profiles keep their coins/cosmetics/redeemed codes.
+      const perUser = ['sf_coins_v1','sf_owned_v1','sf_redeemed_v1','sf_friends_v1','sf_trades_v1'];
+      const toDelete = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (perUser.some(p => k === p || k.startsWith(p + '__'))) toDelete.push(k);
+      }
+      toDelete.forEach(k => localStorage.removeItem(k));
       location.reload();
     }
     return (

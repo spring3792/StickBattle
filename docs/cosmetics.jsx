@@ -200,7 +200,7 @@ window.SFCosmetics = (function () {
         ctx.strokeStyle = '#5a0a18'; ctx.lineWidth = 1; ctx.stroke();
         // chevron stripes
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-        for (let yy = -4; yy >= -18; yy -= 5) {
+        for (let yy = -4; yy >= -26; yy -= 5) {
           const t = (yy + 22) / 22;
           ctx.beginPath();
           ctx.moveTo(-t*10, yy); ctx.lineTo(0, yy + 1.5); ctx.lineTo(t*10, yy); ctx.stroke();
@@ -225,9 +225,9 @@ window.SFCosmetics = (function () {
         bg.addColorStop(0, '#a87038'); bg.addColorStop(1, '#3a1a08');
         ctx.fillStyle = bg;
         ctx.beginPath();
-        ctx.moveTo(-18, 0); ctx.quadraticCurveTo(-14, -4, -8, -3);
+        ctx.moveTo(-26, 0); ctx.quadraticCurveTo(-14, -4, -8, -3);
         ctx.lineTo(8, -3); ctx.quadraticCurveTo(14, -4, 18, 0);
-        ctx.quadraticCurveTo(0, 5, -18, 0); ctx.closePath(); ctx.fill();
+        ctx.quadraticCurveTo(0, 5, -26, 0); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = '#1a0a04'; ctx.lineWidth = 1; ctx.stroke();
         // crown
         const cg = ctx.createLinearGradient(0,-15,0,-3);
@@ -273,7 +273,7 @@ window.SFCosmetics = (function () {
         ctx.strokeStyle = '#0a0420'; ctx.lineWidth = .8; ctx.strokeRect(-14, -2, 28, 3.5);
         // stars
         ctx.fillStyle = '#ffd84a';
-        for (const [x,y,r] of [[-3,-8,1.4],[3,-13,1.2],[-2,-18,1],[5,-6,.9]]) {
+        for (const [x,y,r] of [[-3,-8,1.4],[3,-13,1.2],[-2,-26,1],[5,-6,.9]]) {
           ctx.beginPath();
           for (let i = 0; i < 5; i++) {
             const a = i / 5 * Math.PI*2 - Math.PI/2;
@@ -690,9 +690,9 @@ window.SFCosmetics = (function () {
           ctx.beginPath();
           ctx.moveTo(sx*4, 1); ctx.lineTo(sx*8, -10);
           ctx.moveTo(sx*8, -10); ctx.lineTo(sx*13, -7);
-          ctx.moveTo(sx*8, -10); ctx.lineTo(sx*10, -18);
-          ctx.moveTo(sx*10, -18); ctx.lineTo(sx*14, -18);
-          ctx.moveTo(sx*10, -18); ctx.lineTo(sx*9, -22);
+          ctx.moveTo(sx*8, -10); ctx.lineTo(sx*10, -26);
+          ctx.moveTo(sx*10, -26); ctx.lineTo(sx*14, -26);
+          ctx.moveTo(sx*10, -26); ctx.lineTo(sx*9, -22);
           ctx.stroke();
           // darker shading underneath
           ctx.strokeStyle = '#6a4214'; ctx.lineWidth = 1;
@@ -846,7 +846,7 @@ window.SFCosmetics = (function () {
     // ---------- NEW FLAGSHIPS ----------
     { id:'dragon_helm', name:'Dragon Helm', draw: (ctx) => {
         // dome
-        const g = ctx.createLinearGradient(0,-18,0,4);
+        const g = ctx.createLinearGradient(0,-26,0,4);
         g.addColorStop(0,'#1a2a08'); g.addColorStop(.5,'#3a6a14'); g.addColorStop(1,'#0a1a04');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, 0, 15, Math.PI, 0); ctx.fill();
@@ -886,7 +886,7 @@ window.SFCosmetics = (function () {
 
     { id:'visor', name:'Knight Visor', draw: (ctx) => {
         // helmet
-        const g = ctx.createLinearGradient(-12, -18, 12, 0);
+        const g = ctx.createLinearGradient(-12, -26, 12, 0);
         g.addColorStop(0,'#d8d8e0'); g.addColorStop(.5,'#888892'); g.addColorStop(1,'#2a2a32');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, 1, 15, Math.PI, 0); ctx.fill();
@@ -933,7 +933,7 @@ window.SFCosmetics = (function () {
 
     { id:'viking', name:'Viking Helm', draw: (ctx) => {
         // dome
-        const g = ctx.createLinearGradient(0,-18,0,2);
+        const g = ctx.createLinearGradient(0,-26,0,2);
         g.addColorStop(0,'#a0a8b8'); g.addColorStop(1,'#3a4250');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, 0, 13, Math.PI, 0); ctx.fill();
@@ -955,7 +955,7 @@ window.SFCosmetics = (function () {
           hg.addColorStop(0,'#f0e8d0'); hg.addColorStop(1,'#7a6020');
           ctx.fillStyle = hg;
           ctx.beginPath();
-          ctx.moveTo(sx*8, -7); ctx.quadraticCurveTo(sx*22, -8, sx*20, -18);
+          ctx.moveTo(sx*8, -7); ctx.quadraticCurveTo(sx*22, -8, sx*20, -26);
           ctx.quadraticCurveTo(sx*16, -12, sx*6, -7); ctx.closePath(); ctx.fill();
           ctx.strokeStyle = '#3a2a08'; ctx.lineWidth = .8; ctx.stroke();
           // ridges
@@ -983,10 +983,10 @@ window.SFCosmetics = (function () {
         // ears
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.moveTo(-13, -9); ctx.lineTo(-10, -18); ctx.lineTo(-6, -12); ctx.closePath(); ctx.fill();
+        ctx.moveTo(-13, -9); ctx.lineTo(-10, -26); ctx.lineTo(-6, -12); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = '#aa1010'; ctx.lineWidth = 1; ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(13, -9); ctx.lineTo(10, -18); ctx.lineTo(6, -12); ctx.closePath(); ctx.fill();
+        ctx.moveTo(13, -9); ctx.lineTo(10, -26); ctx.lineTo(6, -12); ctx.closePath(); ctx.fill();
         ctx.stroke();
         // inner ear red
         ctx.fillStyle = '#cc1a3a';
@@ -1148,8 +1148,8 @@ window.SFCosmetics = (function () {
         fg.addColorStop(0, '#5bf0e8'); fg.addColorStop(.5, '#9a3aff'); fg.addColorStop(1, '#fff1a0');
         ctx.fillStyle = fg;
         ctx.beginPath();
-        ctx.moveTo(8, -10); ctx.quadraticCurveTo(12, -18, 16, -24);
-        ctx.quadraticCurveTo(14, -18, 10, -10); ctx.closePath(); ctx.fill();
+        ctx.moveTo(8, -10); ctx.quadraticCurveTo(12, -26, 16, -24);
+        ctx.quadraticCurveTo(14, -26, 10, -10); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = '#3a1a55'; ctx.lineWidth = .5; ctx.stroke();
         // feather barbs
         ctx.strokeStyle = '#3a1a55'; ctx.lineWidth = .5;
@@ -1231,7 +1231,7 @@ window.SFCosmetics = (function () {
         ctx.fillStyle = '#b41a2a';
         ctx.beginPath();
         // Left point
-        ctx.moveTo(-12, -2); ctx.lineTo(-16, -18); ctx.lineTo(-7, -10);
+        ctx.moveTo(-12, -2); ctx.lineTo(-16, -26); ctx.lineTo(-7, -10);
         ctx.lineTo(-3, -22); ctx.lineTo(2, -10); ctx.lineTo(8, -22);
         ctx.lineTo(12, -10); ctx.lineTo(14, -2);
         ctx.closePath(); ctx.fill();
@@ -1242,13 +1242,13 @@ window.SFCosmetics = (function () {
         ctx.closePath(); ctx.fill();
         // Bells
         ctx.fillStyle = '#ffd76a';
-        ctx.beginPath(); ctx.arc(-16, -18, 2.2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-16, -26, 2.2, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(-3, -22, 2.2, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(8, -22, 2.2, 0, Math.PI*2); ctx.fill();
         // Outline
         ctx.strokeStyle = '#3a0a14'; ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(-12, -2); ctx.lineTo(-16, -18); ctx.lineTo(-7, -10);
+        ctx.moveTo(-12, -2); ctx.lineTo(-16, -26); ctx.lineTo(-7, -10);
         ctx.lineTo(-3, -22); ctx.lineTo(2, -10); ctx.lineTo(8, -22);
         ctx.lineTo(12, -10); ctx.lineTo(14, -2);
         ctx.stroke();
@@ -1423,7 +1423,7 @@ window.SFCosmetics = (function () {
         g.addColorStop(0, '#2a2230'); g.addColorStop(1, '#0a0810');
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(-4, -2); ctx.quadraticCurveTo(-18, 14, -15, 40);
+        ctx.moveTo(-4, -2); ctx.quadraticCurveTo(-26, 14, -15, 40);
         ctx.lineTo(15, 40); ctx.quadraticCurveTo(18, 14, 4, -2); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
         // mysterious tatter
@@ -2214,43 +2214,43 @@ window.SFCosmetics = (function () {
     { id:'fire', name:'Fire Aura', draw: (ctx, t) => {
         const pulse = (Math.sin((t || 0) * 0.06) + 1) * 0.5;
         const R = 26 + pulse * 3;
-        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
         g.addColorStop(0, 'rgba(255,215,106,.55)');
         g.addColorStop(0.55, 'rgba(255,77,46,.35)');
         g.addColorStop(1, 'rgba(255,77,46,0)');
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
       } },
     { id:'ice', name:'Ice Aura', draw: (ctx, t) => {
         const R = 24;
-        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
         g.addColorStop(0, 'rgba(180,240,255,.6)');
         g.addColorStop(0.6, 'rgba(92,246,255,.30)');
         g.addColorStop(1, 'rgba(92,246,255,0)');
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
         // snowflake dots orbiting
         for (let i = 0; i < 5; i++) {
           const a = ((t || 0) * 0.02 + i * (Math.PI * 2 / 5));
-          const x = Math.cos(a) * 22, y = -18 + Math.sin(a) * 22;
+          const x = Math.cos(a) * 22, y = -26 + Math.sin(a) * 22;
           ctx.fillStyle = '#eaffff';
           ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI*2); ctx.fill();
         }
       } },
     { id:'shadow', name:'Shadow Aura', draw: (ctx) => {
         const R = 22;
-        const g = ctx.createRadialGradient(0, -18, 2, 0, -18, R);
+        const g = ctx.createRadialGradient(0, -26, 2, 0, -26, R);
         g.addColorStop(0, 'rgba(30,20,60,.75)');
         g.addColorStop(1, 'rgba(30,20,60,0)');
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
       } },
     { id:'rainbow', name:'Rainbow Aura', draw: (ctx, t) => {
         const R = 24;
         const cols = ['#ff5b6e','#ff9a3c','#ffd76a','#5bff8a','#5cf6ff','#a07bff','#ff6ac1'];
         for (let i = 0; i < cols.length; i++) {
           const a = ((t || 0) * 0.03 + i * (Math.PI * 2 / cols.length));
-          const x = Math.cos(a) * R, y = -18 + Math.sin(a) * R;
+          const x = Math.cos(a) * R, y = -26 + Math.sin(a) * R;
           ctx.fillStyle = cols[i]; ctx.globalAlpha = 0.7;
           ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI*2); ctx.fill();
         }
@@ -2258,39 +2258,32 @@ window.SFCosmetics = (function () {
       } },
     { id:'electric', name:'Electric Aura', draw: (ctx, t) => {
         const R = 22;
-        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
         g.addColorStop(0, 'rgba(255,255,180,.55)');
         g.addColorStop(1, 'rgba(255,255,0,0)');
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
-        // jagged bolts
-        ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 1.4;
-        for (let i = 0; i < 4; i++) {
-          const a = ((t || 0) * 0.15 + i * Math.PI / 2);
-          ctx.beginPath();
-          let x = Math.cos(a) * 8, y = -18 + Math.sin(a) * 8;
-          ctx.moveTo(x, y);
-          for (let k = 1; k <= 3; k++) {
-            const r2 = 8 + k * 5;
-            const off = (k % 2 === 0 ? 0.3 : -0.3);
-            x = Math.cos(a + off) * r2; y = -18 + Math.sin(a + off) * r2;
-            ctx.lineTo(x, y);
-          }
-          ctx.stroke();
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
+        // Small crackle sparks around the perimeter — evenly spaced so the
+        // aura reads as a clean electric ring instead of a lopsided zigzag.
+        ctx.fillStyle = '#ffd76a';
+        for (let i = 0; i < 8; i++) {
+          const a = ((t || 0) * 0.06 + i * (Math.PI * 2 / 8));
+          const x = Math.cos(a) * 20, y = -26 + Math.sin(a) * 20;
+          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI*2); ctx.fill();
         }
       } },
     { id:'gold', name:'Golden Aura', draw: (ctx, t) => {
         const pulse = (Math.sin((t || 0) * 0.05) + 1) * 0.5;
         const R = 25 + pulse * 2;
-        const g = ctx.createRadialGradient(0, -18, 4, 0, -18, R);
+        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
         g.addColorStop(0, 'rgba(255,241,160,.7)');
         g.addColorStop(0.5, 'rgba(255,215,106,.4)');
         g.addColorStop(1, 'rgba(200,144,20,0)');
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(0, -18, R, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
         // sparkles
         for (let i = 0; i < 6; i++) {
           const a = ((t || 0) * 0.04 + i * (Math.PI * 2 / 6));
-          const x = Math.cos(a) * 20, y = -18 + Math.sin(a) * 20;
+          const x = Math.cos(a) * 20, y = -26 + Math.sin(a) * 20;
           ctx.fillStyle = '#fff2a6';
           ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI*2); ctx.fill();
         }

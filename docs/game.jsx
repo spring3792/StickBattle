@@ -240,6 +240,10 @@ window.StickFightGame = (function () {
       alive:true, dead:false, deadTimer:0,
       ragdoll:null,
       score: profile.score || 0,
+      // Passed through from the profile so per-mode target checks (parkour,
+      // coin rush, KOTH, last stand) actually respect settings.target instead
+      // of silently falling back to the hardcoded 5.
+      _target: profile._target || 5,
     };
   }
 
@@ -294,7 +298,8 @@ window.StickFightGame = (function () {
       // ----- BOMB TAG: spawn bomb mid-stage on a random player -----
       if (state.mode === 'bomb') {
         const first = state.players[Math.floor(Math.random() * state.players.length)];
-        state.bomb = { carrierSlot: first.slot, timer: 60 * 6 /* 6 seconds */ , flashIntense:false };
+        // cooldown prevents frame-1 instant transfer to a nearby spawn.
+        state.bomb = { carrierSlot: first.slot, timer: 60 * 6 /* 6 seconds */ , flashIntense:false, cooldown: 45 };
       }
 
       // ----- PARKOUR RACE: challenging but fair. Bigger platforms,
@@ -407,7 +412,7 @@ window.StickFightGame = (function () {
           path,
           pathId: path._id || 'zigzag',
           pathLen: pathTotalLen(path),
-          baseHp: 25,                    // base goes down faster — fewer mistakes allowed
+          baseHp: 30, baseHpMax: 30,     // base goes down faster — fewer mistakes allowed
           gold: 200,                     // smaller starting bank
           waveNum: 1, waveTimer: 60 * 3,
           enemies: [], towers: [], proj: [],
@@ -689,6 +694,13 @@ window.StickFightGame = (function () {
 
     // ---- LAST STAND ----
     if (state.mode === 'last' && state.winner === null && state.wave) {
+      // If any human is dead, the run is over — otherwise the match just
+      // hangs (bots keep respawning but nobody can score without the human).
+      const humansDead = state.players.some(p => !p.isBot && !p.alive);
+      if (humansDead) {
+        state.winner = null;
+        state.endTimer = 120;
+      } else {
       // When a bot dies, give the human a kill credit and respawn the bot
       for (const p of state.players) {
         if (p.isBot && !p.alive && !p._respawnTimer) {
@@ -717,6 +729,7 @@ window.StickFightGame = (function () {
             }
           }
         }
+      }
       }
     }
 
@@ -992,7 +1005,11 @@ window.StickFightGame = (function () {
           td.baseHp--;
           state.shake = Math.max(state.shake, 14);
           if (td.baseHp <= 0) {
-            state.winner = state.players.find(p => p.isBot)?.slot ?? 0;
+            // Base destroyed = human(s) LOST. Award the win to a bot if any
+            // exists; otherwise mark it as a null-winner defeat so the human
+            // isn't wrongly credited with a "VICTORY" on their own base loss.
+            const enemyBot = state.players.find(p => p.isBot);
+            state.winner = enemyBot ? enemyBot.slot : null;
             state.endTimer = 110;
           }
           continue;
@@ -1302,7 +1319,10 @@ window.StickFightGame = (function () {
       }
     } else if (state.winner === null) {
       // Modes that govern their own end conditions skip last-man-standing
-      const skip = ['koth','bomb','last','parkour','golf','td'].includes(state.mode);
+      // Coin rush has its own "first to N coins" end condition; leaving it
+      // out here means a stray hazard death ends the round with an arbitrary
+      // winner (or nobody).
+      const skip = ['koth','bomb','last','parkour','golf','td','coins'].includes(state.mode);
       if (!skip) {
         const alive = state.players.filter(p => p.alive);
         if (alive.length <= 1 && state.players.length > 1) {
@@ -1313,10 +1333,15 @@ window.StickFightGame = (function () {
           state.endTimer = 60;
         }
       } else if (state.mode === 'bomb') {
-        // For bomb tag, last alive wins
+        // For bomb tag, last alive wins. Handle simultaneous-death: if the
+        // final blast kills the last two survivors on the same frame,
+        // alive.length becomes 0 — end the round with no winner instead of
+        // hanging forever waiting for it to hit exactly 1.
         const alive = state.players.filter(p => p.alive);
         if (alive.length === 1 && state.players.length > 1) {
           state.winner = alive[0].slot; state.endTimer = 110;
+        } else if (alive.length === 0 && state.players.length > 1) {
+          state.winner = null; state.endTimer = 90;
         }
       }
     }
@@ -2464,7 +2489,7 @@ window.StickFightGame = (function () {
     // Start Wave (only active when waveReady)
     if (td.waveReady && x >= sx && x < sx + sw && y >= sy && y < sy + sh) {
       td.waveReady = false;
-      td.waveTimer = 30; // small lead-in delay
+      td.waveTimer = 60 * 3; // 3s lead-in so the player can position for the wave
       return true;
     }
     // Click inside the controls strip but not on a button → consume
@@ -4246,7 +4271,7 @@ window.StickFightGame = (function () {
     ctx.closePath(); ctx.fill();
 
     // Base HP bar (above castle)
-    const hpRatio = Math.max(0, td.baseHp / 30);
+    const hpRatio = Math.max(0, td.baseHp / (td.baseHpMax || 30));
     const bw = 80, bh = 7;
     const bX = bx - bw/2, bY = by - 56;
     ctx.fillStyle = '#1a1a22';
@@ -4257,7 +4282,7 @@ window.StickFightGame = (function () {
     ctx.fillRect(bX, bY, bw * hpRatio, bh);
     ctx.fillStyle = '#fff';
     ctx.font = "700 10px 'Bebas Neue'"; ctx.textAlign = 'center';
-    ctx.fillText(`HP ${Math.max(0, td.baseHp)} / 30`, bx, bY - 3);
+    ctx.fillText(`HP ${Math.max(0, td.baseHp)} / ${td.baseHpMax || 30}`, bx, bY - 3);
 
     // Towers (per-kind visuals) with shadow and depth
     for (const t of td.towers) {
@@ -4969,12 +4994,17 @@ window.StickFightGame = (function () {
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ffd76a';
       if (gameState.mode === 'coins') {
-        ctx.fillText(`${scoreNum}`, x + slotW - 12, y + 26);
+        // Right-align the whole "N / M" phrase, with target smaller/dimmer
+        // to the RIGHT of the big score.
+        const scoreText = `${scoreNum}`;
+        const targetText = ` / ${targetNum}`;
         ctx.font = "700 12px 'Rajdhani'";
         ctx.fillStyle = '#c9b4dc';
-        const scoreText = `${scoreNum}`;
-        const scoreW = ctx.measureText(scoreText).width;
-        ctx.fillText(`/ ${targetNum}`, x + slotW - 12 - scoreW - 22, y + 26);
+        const targetW = ctx.measureText(targetText).width;
+        ctx.fillText(targetText, x + slotW - 12, y + 26);
+        ctx.font = "700 26px 'Bebas Neue', sans-serif";
+        ctx.fillStyle = '#ffd76a';
+        ctx.fillText(scoreText, x + slotW - 12 - targetW, y + 26);
       } else {
         ctx.fillText(`${scoreNum}`, x + slotW - 12, y + 26);
       }
