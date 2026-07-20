@@ -821,22 +821,23 @@
     onOpenFriends, onOpenTrade, onOpenProfile, onOpenQueue, queueCount, onPreviewSet,
     playMode, onChangePlayMode, onQuickMatch, party, onClearParty, challengeFriend, onClearChallenge, onOpenHostingScreen,
     onOpenAdmin, adminKey, onSwitchAccount }) {
-    // Chip helper — icon only on narrow, icon+label otherwise
+    // Compact icon-only chip. Hover-only tooltip via title, colored border
+    // stripe so each action still has an identity without label text.
     const Chip = ({ icon, emoji, label, onClick, color, glow }) => (
-      <button onClick={onClick} className="btn sm ghost"
-        title={label}
+      <button onClick={onClick} title={label}
         style={{
-          padding:'9px 14px', borderRadius:10,
-          background:'rgba(0,0,0,.55)',
+          width:38, height:38, padding:0, borderRadius:10,
+          background:'rgba(255,255,255,.03)',
           border:`1px solid ${color || 'var(--line-2)'}`,
-          color:'var(--ink)', letterSpacing:'.06em', textTransform:'uppercase',
-          display:'inline-flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700,
-          boxShadow: glow ? `0 0 18px ${color}44` : 'none',
-          cursor:'pointer',
-        }}>
-        {emoji ? <span style={{ fontSize:16, lineHeight:1 }}>{emoji}</span>
-               : <Icon id={icon} size={14} color={color || 'var(--ink)'}/>}
-        <span>{label}</span>
+          color:'var(--ink)',
+          display:'inline-flex', alignItems:'center', justifyContent:'center',
+          boxShadow: glow ? `0 0 14px ${color}55` : 'inset 0 1px 0 rgba(255,255,255,.05)',
+          cursor:'pointer', transition:'transform .1s, background .1s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.08)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.03)'; e.currentTarget.style.transform = 'none'; }}>
+        {emoji ? <span style={{ fontSize:18, lineHeight:1 }}>{emoji}</span>
+               : <Icon id={icon} size={16} color={color || 'var(--ink)'}/>}
       </button>
     );
     // Simpler layout: one centered column, top-to-bottom flow. Fewer
