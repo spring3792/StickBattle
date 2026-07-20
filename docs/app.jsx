@@ -8,9 +8,13 @@
   // Shade a #rrggbb toward black by `amt` (0–1). Used to derive a stroke from
   // a user-picked stickman colour so the player still has a contrasting edge.
   function mixToBlack(hex, amt = 0.5) {
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
-    if (!m) return '#1a0e22';
-    const n = parseInt(m[1], 16);
+    // Accept both #rgb and #rrggbb — the palette includes short forms like
+    // "#fff", which without this expansion fell back to the default dark
+    // and made the "white" stickman render with a blue outline.
+    let h = String(hex || '').replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map(c => c + c).join('');
+    if (!/^[0-9a-f]{6}$/i.test(h)) return '#1a0e22';
+    const n = parseInt(h, 16);
     const k = 1 - amt;
     const r = Math.round(((n >> 16) & 0xff) * k);
     const g = Math.round(((n >> 8) & 0xff) * k);
@@ -139,7 +143,7 @@
     const currentMode = allModes.find(m => m.id === settings.mode) || allModes[0];
     const POOL = ['xSt1ckLord','BowKing','FrostQueen','Vexo','PixelPunch','Razer',
       'Krang','MintCake','NeonRaven','BoomGuy','ChessMonk','Yeet','PingPong','Apex22','Lunar'];
-    const PALETTE = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#fff'];
+    const PALETTE = ['#5cf6ff','#5bff8a','#ffd76a','#ff9a3c','#ff5b6e','#a07bff','#ffffff'];
     const [joined, setJoined] = useState([]);
     const [muted, setMuted] = useState(false);
     // Host role — 'player' = host plays in slot 0, 'spectator' = host watches
@@ -2560,9 +2564,10 @@
   }
 
   function lighten(hex, amt) {
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
-    if (!m) return hex || '#888';
-    const n = parseInt(m[1], 16);
+    let h = String(hex || '').replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map(c => c + c).join('');
+    if (!/^[0-9a-f]{6}$/i.test(h)) return hex || '#888';
+    const n = parseInt(h, 16);
     let r = (n>>16)&0xff, g = (n>>8)&0xff, b = n&0xff;
     r = Math.min(255, r + (255-r)*amt) | 0;
     g = Math.min(255, g + (255-g)*amt) | 0;

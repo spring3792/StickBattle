@@ -3987,10 +3987,11 @@ window.StickFightGame = (function () {
   }
 
   function lighten(hex, amt) {
-    // simple lighten
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-    if (!m) return hex;
-    const n = parseInt(m[1], 16);
+    // simple lighten; accepts #rgb and #rrggbb.
+    let h = String(hex || '').replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map(c => c + c).join('');
+    if (!/^[0-9a-f]{6}$/i.test(h)) return hex;
+    const n = parseInt(h, 16);
     let r = (n>>16)&0xff, g = (n>>8)&0xff, b = n&0xff;
     r = Math.min(255, r + (255-r)*amt) | 0;
     g = Math.min(255, g + (255-g)*amt) | 0;

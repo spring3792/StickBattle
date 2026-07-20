@@ -2212,9 +2212,10 @@ window.SFCosmetics = (function () {
   const AURAS = [
     { id:'none', name:'No Aura', draw: () => {} },
     { id:'fire', name:'Fire Aura', draw: (ctx, t) => {
+        // Big enough to envelop the whole stickman (feet at 0, head ~ -50).
         const pulse = (Math.sin((t || 0) * 0.06) + 1) * 0.5;
-        const R = 26 + pulse * 3;
-        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
+        const R = 42 + pulse * 4;
+        const g = ctx.createRadialGradient(0, -26, 8, 0, -26, R);
         g.addColorStop(0, 'rgba(255,215,106,.55)');
         g.addColorStop(0.55, 'rgba(255,77,46,.35)');
         g.addColorStop(1, 'rgba(255,77,46,0)');
@@ -2222,43 +2223,43 @@ window.SFCosmetics = (function () {
         ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
       } },
     { id:'ice', name:'Ice Aura', draw: (ctx, t) => {
-        const R = 24;
-        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
+        const R = 42;
+        const g = ctx.createRadialGradient(0, -26, 8, 0, -26, R);
         g.addColorStop(0, 'rgba(180,240,255,.6)');
         g.addColorStop(0.6, 'rgba(92,246,255,.30)');
         g.addColorStop(1, 'rgba(92,246,255,0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
         // snowflake dots orbiting
-        for (let i = 0; i < 5; i++) {
-          const a = ((t || 0) * 0.02 + i * (Math.PI * 2 / 5));
-          const x = Math.cos(a) * 22, y = -26 + Math.sin(a) * 22;
+        for (let i = 0; i < 6; i++) {
+          const a = ((t || 0) * 0.02 + i * (Math.PI * 2 / 6));
+          const x = Math.cos(a) * 38, y = -26 + Math.sin(a) * 38;
           ctx.fillStyle = '#eaffff';
           ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI*2); ctx.fill();
         }
       } },
     { id:'shadow', name:'Shadow Aura', draw: (ctx) => {
-        const R = 22;
-        const g = ctx.createRadialGradient(0, -26, 2, 0, -26, R);
+        const R = 40;
+        const g = ctx.createRadialGradient(0, -26, 6, 0, -26, R);
         g.addColorStop(0, 'rgba(30,20,60,.75)');
         g.addColorStop(1, 'rgba(30,20,60,0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
       } },
     { id:'rainbow', name:'Rainbow Aura', draw: (ctx, t) => {
-        const R = 24;
+        const R = 40;
         const cols = ['#ff5b6e','#ff9a3c','#ffd76a','#5bff8a','#5cf6ff','#a07bff','#ff6ac1'];
         for (let i = 0; i < cols.length; i++) {
           const a = ((t || 0) * 0.03 + i * (Math.PI * 2 / cols.length));
           const x = Math.cos(a) * R, y = -26 + Math.sin(a) * R;
           ctx.fillStyle = cols[i]; ctx.globalAlpha = 0.7;
-          ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(x, y, 3.6, 0, Math.PI*2); ctx.fill();
         }
         ctx.globalAlpha = 1;
       } },
     { id:'electric', name:'Electric Aura', draw: (ctx, t) => {
-        const R = 22;
-        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
+        const R = 40;
+        const g = ctx.createRadialGradient(0, -26, 6, 0, -26, R);
         g.addColorStop(0, 'rgba(255,255,180,.55)');
         g.addColorStop(1, 'rgba(255,255,0,0)');
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
@@ -2267,25 +2268,25 @@ window.SFCosmetics = (function () {
         ctx.fillStyle = '#ffd76a';
         for (let i = 0; i < 8; i++) {
           const a = ((t || 0) * 0.06 + i * (Math.PI * 2 / 8));
-          const x = Math.cos(a) * 20, y = -26 + Math.sin(a) * 20;
-          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI*2); ctx.fill();
+          const x = Math.cos(a) * 36, y = -26 + Math.sin(a) * 36;
+          ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI*2); ctx.fill();
         }
       } },
     { id:'gold', name:'Golden Aura', draw: (ctx, t) => {
         const pulse = (Math.sin((t || 0) * 0.05) + 1) * 0.5;
-        const R = 25 + pulse * 2;
-        const g = ctx.createRadialGradient(0, -26, 4, 0, -26, R);
+        const R = 42 + pulse * 3;
+        const g = ctx.createRadialGradient(0, -26, 8, 0, -26, R);
         g.addColorStop(0, 'rgba(255,241,160,.7)');
         g.addColorStop(0.5, 'rgba(255,215,106,.4)');
         g.addColorStop(1, 'rgba(200,144,20,0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, -26, R, 0, Math.PI*2); ctx.fill();
         // sparkles
-        for (let i = 0; i < 6; i++) {
-          const a = ((t || 0) * 0.04 + i * (Math.PI * 2 / 6));
-          const x = Math.cos(a) * 20, y = -26 + Math.sin(a) * 20;
+        for (let i = 0; i < 7; i++) {
+          const a = ((t || 0) * 0.04 + i * (Math.PI * 2 / 7));
+          const x = Math.cos(a) * 38, y = -26 + Math.sin(a) * 38;
           ctx.fillStyle = '#fff2a6';
-          ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(x, y, 1.4, 0, Math.PI*2); ctx.fill();
         }
       } },
   ];
