@@ -224,7 +224,12 @@ window.GameData = (function () {
   // Hex string (e.g. "#5cf6ff"). Falls back to a per-slot default if unset.
   function setPlayerColor(name, color) {
     const meta = getProfileMeta(name);
-    if (color && /^#[0-9a-f]{6}$/i.test(color)) meta.color = color;
+    // Accept both #rgb and #rrggbb — normalize short form to long so the
+    // rest of the app always reads a 6-char value. Before, "#fff" failed
+    // the regex silently and the color reverted to the default blue.
+    let hex = String(color || '').trim();
+    if (/^#[0-9a-f]{3}$/i.test(hex)) hex = '#' + hex.slice(1).split('').map(c => c + c).join('');
+    if (hex && /^#[0-9a-f]{6}$/i.test(hex)) meta.color = hex;
     else delete meta.color;
     setProfileMeta(name, meta);
   }

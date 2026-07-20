@@ -1958,10 +1958,11 @@ window.StickFightGame = (function () {
   // Shift a hex/css color toward black (amt<0) or white (amt>0). amt∈[-1,1].
   // Used by the detailed-stickman renderer to derive shading tones from a base.
   function shadeColor(hex, amt) {
-    // Quick path: only handle #rrggbb. Returns input if not parseable.
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
-    if (!m) return hex || '#888';
-    const n = parseInt(m[1], 16);
+    // Handle #rgb and #rrggbb. Returns input if not parseable.
+    let h = String(hex || '').replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map(c => c + c).join('');
+    if (!/^[0-9a-f]{6}$/i.test(h)) return hex || '#888';
+    const n = parseInt(h, 16);
     let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
     if (amt >= 0) {
       r = Math.round(r + (255 - r) * amt);
