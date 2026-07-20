@@ -2091,15 +2091,15 @@
       if (!list || list.length === 0) return null;
       return (
         <div style={{ width:'100%' }}>
-          <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.18em', marginBottom:4 }}>
-            {label} <span style={{ opacity:.55 }}>· {list.length}</span>
+          <div style={{ fontSize:12, color:'#c9b4dc', letterSpacing:'.18em', marginBottom:5, fontWeight:800 }}>
+            {label} <span style={{ opacity:.65, fontWeight:600 }}>· {list.length}</span>
           </div>
           {/* Single horizontal row — scrolls instead of wrapping into a wall. */}
-          <div style={{
+          <div className="cosmetic-scroll" style={{
             display:'flex', gap:4, flexWrap:'nowrap',
             overflowX:'auto', overflowY:'hidden',
-            paddingBottom:4,
-            scrollbarWidth:'thin',
+            paddingBottom:0,
+            scrollbarWidth:'none',
           }}>
             {list.map(item => {
               const on = eq === item.id || (!eq && item.id === list[0].id);
@@ -2132,8 +2132,10 @@
       <div className="panel" style={{
         maxWidth: 1280, margin:'0 auto', width:'100%',
         padding:'12px 16px',
-        background:'linear-gradient(90deg, rgba(160,123,255,.10), transparent 70%)',
-        border:'1.5px solid rgba(160,123,255,.4)',
+        // Solid dark backdrop so the row labels stay readable against the
+        // bright launch-screen green bleed-through.
+        background:'linear-gradient(90deg, rgba(20,10,38,.94), rgba(20,10,38,.88))',
+        border:'1.5px solid rgba(160,123,255,.55)',
       }}>
         <div className="row" style={{ alignItems:'center', gap:14, flexWrap:'wrap' }}>
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.1em', color:'#a07bff' }}>

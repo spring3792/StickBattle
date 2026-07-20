@@ -104,6 +104,10 @@
   .hat-tile.on{border-color:var(--fire-1);box-shadow:0 0 0 3px rgba(255,77,46,.25)}
   .color-tile{width:36px;height:36px;border-radius:8px;cursor:pointer;border:3px solid transparent}
   .color-tile.on{border-color:#fff}
+  /* Hide the horizontal scrollbar strip on cosmetic pill rows — it read as
+     an empty grey bar against the dark panel. */
+  .cosmetic-scroll::-webkit-scrollbar{display:none;height:0}
+  .cosmetic-scroll{-ms-overflow-style:none}
 </style>
 </head>
 <body>
@@ -114,12 +118,12 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
-<script type="text/babel" src="icons.jsx?v=107"></script>
-<script type="text/babel" src="cosmetics.jsx?v=107"></script>
-<script type="text/babel" src="questions.jsx?v=107"></script>
-<script type="text/babel" src="data.jsx?v=107"></script>
-<script type="text/babel" src="game.jsx?v=107"></script>
-<script type="text/babel" src="app.jsx?v=107"></script>
+<script type="text/babel" src="icons.jsx?v=108"></script>
+<script type="text/babel" src="cosmetics.jsx?v=108"></script>
+<script type="text/babel" src="questions.jsx?v=108"></script>
+<script type="text/babel" src="data.jsx?v=108"></script>
+<script type="text/babel" src="game.jsx?v=108"></script>
+<script type="text/babel" src="app.jsx?v=108"></script>
 
 </body>
 </html>
