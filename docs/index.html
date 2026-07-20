@@ -12,14 +12,16 @@
 
 <style>
   :root {
-    /* Slate-first palette — less purple wash, more arcade-console feel */
-    --bg-0:#0b0e1a; --bg-1:#111629; --bg-2:#1a2140; --bg-3:#28325e;
+    /* Arcade Console palette — charcoal + accent stripes */
+    --bg-0:#0a0d17; --bg-1:#0f1421; --bg-2:#151b2d; --bg-3:#1f2740;
     --ink:#f5efe1; --ink-2:#b7c0d4; --ink-3:#6b7391;
     --fire-1:#ff4d2e; --fire-2:#ff9a3c; --fire-3:#ffd76a;
+    --neon-c:#5cf6ff; --neon-g:#5bff8a; --neon-p:#a07bff; --neon-pink:#ff6ac1;
     --good:#5bff8a; --danger:#ff5b6e;
-    --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.18);
-    --card-bg:rgba(17,22,41,.88);
-    --card-bg-2:rgba(26,33,64,.75);
+    --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.16);
+    --card-bg:rgba(15,20,33,.94);
+    --card-bg-2:rgba(21,27,45,.90);
+    --stripe-h:3px;
   }
   html[data-edu="on"] {
     --bg-0:#06140a; --bg-1:#0a2014; --bg-2:#103420; --bg-3:#1a5436;
@@ -30,10 +32,11 @@
   html,body{margin:0;height:100%;background:var(--bg-0);color:var(--ink);font-family:'Rajdhani',system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
   body{
     background:
-      /* Subtle warm glow at the bottom edge only — no more full-body orange wash. */
-      radial-gradient(ellipse 70% 30% at 50% 108%, rgba(255,77,46,.28) 0%, transparent 70%),
-      radial-gradient(ellipse 40% 20% at 10% 100%, rgba(255,154,60,.14) 0%, transparent 70%),
-      radial-gradient(ellipse 40% 20% at 90% 100%, rgba(255,154,60,.14) 0%, transparent 70%),
+      /* Faint scanline grid — reads as an arcade CRT overlay. */
+      repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.012) 3px 4px),
+      radial-gradient(ellipse 60% 25% at 50% 108%, rgba(255,77,46,.22) 0%, transparent 70%),
+      radial-gradient(ellipse 45% 35% at 15% 15%, rgba(160,123,255,.10) 0%, transparent 70%),
+      radial-gradient(ellipse 45% 35% at 85% 15%, rgba(92,246,255,.08) 0%, transparent 70%),
       linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 60%, var(--bg-2) 100%);
   }
   #root{height:100vh;width:100vw;position:relative}
@@ -49,7 +52,14 @@
   .title-sub{font-family:'Patrick Hand',cursive;font-size:clamp(20px,3vw,42px);color:#fff;margin-top:-.2em;
     text-shadow:0 2px 8px rgba(0,0,0,.6); transform:rotate(-1deg);
   }
-  .panel{background:var(--card-bg);border:1px solid var(--line-2);border-radius:14px;padding:20px;backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)}
+  .panel{position:relative;background:var(--card-bg);border:1px solid var(--line-2);border-radius:14px;padding:20px;backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05)}
+  /* Colored top stripe accent used on card sections (arcade title-card look). */
+  .stripe-top{position:relative;padding-top:22px}
+  .stripe-top::before{content:'';position:absolute;top:0;left:0;right:0;height:var(--stripe-h);background:var(--stripe-c, var(--fire-2));border-radius:14px 14px 0 0;box-shadow:0 0 12px var(--stripe-c, var(--fire-2))}
+  /* Convenience colors for the stripe */
+  .st-fire{--stripe-c:var(--fire-2)} .st-cyan{--stripe-c:var(--neon-c)}
+  .st-green{--stripe-c:var(--neon-g)} .st-purple{--stripe-c:var(--neon-p)}
+  .st-pink{--stripe-c:var(--neon-pink)} .st-gold{--stripe-c:var(--fire-3)}
   button.btn, .btn{
     appearance:none;cursor:pointer;font-family:'Rajdhani',sans-serif;font-weight:800;font-size:17px;letter-spacing:.08em;
     text-transform:uppercase;color:#fff;background:linear-gradient(180deg,var(--fire-2),var(--fire-1));
@@ -122,12 +132,12 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
-<script type="text/babel" src="icons.jsx?v=110"></script>
-<script type="text/babel" src="cosmetics.jsx?v=110"></script>
-<script type="text/babel" src="questions.jsx?v=110"></script>
-<script type="text/babel" src="data.jsx?v=110"></script>
-<script type="text/babel" src="game.jsx?v=110"></script>
-<script type="text/babel" src="app.jsx?v=110"></script>
+<script type="text/babel" src="icons.jsx?v=111"></script>
+<script type="text/babel" src="cosmetics.jsx?v=111"></script>
+<script type="text/babel" src="questions.jsx?v=111"></script>
+<script type="text/babel" src="data.jsx?v=111"></script>
+<script type="text/babel" src="game.jsx?v=111"></script>
+<script type="text/babel" src="app.jsx?v=111"></script>
 
 </body>
 </html>

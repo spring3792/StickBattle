@@ -577,8 +577,8 @@
     }
     const isOnline = playMode === 'online';
     return (
-      <div className="panel" style={{
-        padding:'12px 16px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+      <div className="panel stripe-top st-cyan" style={{
+        padding:'18px 16px 12px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
         background: isOnline
           ? 'linear-gradient(90deg, rgba(255,215,106,.14), rgba(92,246,255,.10) 70%)'
           : 'linear-gradient(90deg, rgba(255,154,60,.08), transparent 70%)',
@@ -882,10 +882,10 @@
         </div>
 
         {/* PLAY MODE + QUICK MATCH bar — pick local/online and one-tap Quick Match */}
-        <div className="panel" style={{
-          padding:'10px 14px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
-          background:'linear-gradient(90deg, rgba(92,246,255,.08), transparent 70%)',
-          border:'1.5px solid rgba(92,246,255,.35)',
+        <div className="panel stripe-top st-gold" style={{
+          padding:'16px 14px 10px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+          background:'var(--card-bg-2)',
+          border:'1px solid rgba(255,215,106,.30)',
         }}>
           <div style={{ fontSize:11, color:'var(--ink-3)', letterSpacing:'.18em' }}>PLAY MODE</div>
           <div style={{ display:'flex', gap:0, background:'rgba(0,0,0,.45)',
@@ -975,11 +975,11 @@
             onOpenFriends={onOpenFriends}
           />
         ) : (
-        <div className="panel" style={{
-          padding:'18px 22px',
+        <div className="panel stripe-top st-fire" style={{
+          padding:'22px 22px 18px',
           background:`linear-gradient(135deg, rgba(255,77,46,.15), transparent 60%), var(--card-bg)`,
-          border:'2px solid rgba(255,154,60,.45)',
-          display:'flex', flexDirection:'column', gap:14, position:'relative', overflow:'hidden',
+          border:'1px solid rgba(255,154,60,.45)',
+          display:'flex', flexDirection:'column', gap:14, overflow:'hidden',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             {/* decorative stickman silhouette */}
@@ -2130,13 +2130,11 @@
       );
     }
     return (
-      <div className="panel" style={{
+      <div className="panel stripe-top st-purple" style={{
         maxWidth: 1280, margin:'0 auto', width:'100%',
-        padding:'12px 16px',
-        // Solid dark backdrop so the row labels stay readable against the
-        // bright launch-screen green bleed-through.
-        background:'linear-gradient(90deg, rgba(20,10,38,.94), rgba(20,10,38,.88))',
-        border:'1.5px solid rgba(160,123,255,.55)',
+        padding:'18px 16px 12px',
+        background:'var(--card-bg)',
+        border:'1px solid rgba(160,123,255,.35)',
       }}>
         <div className="row" style={{ alignItems:'center', gap:14, flexWrap:'wrap' }}>
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:18, letterSpacing:'.1em', color:'#a07bff' }}>
