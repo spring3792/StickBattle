@@ -697,7 +697,7 @@ window.GameData = (function () {
     return pickRandom(POWERUPS.filter(p => p.tier === tier), n);
   }
 
-  function eduTitle(on) { return on ? 'STICK SCHOLAR' : 'STICK FIGHT'; }
+  function eduTitle(on) { return on ? 'STICK BATTLE' : 'STICK FIGHT'; }
   function eduSub(on)   { return on ? 'the friendly bonk game' : 'the game'; }
 
   function catLabel(c) { return ({ move:'Movement', def:'Defense', off:'Offense', util:'Utility', fun:'Wacky' })[c] || c; }

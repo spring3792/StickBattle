@@ -3133,7 +3133,7 @@
       }}>
         <div style={{ width:'min(460px, 94vw)', textAlign:'center', margin:'auto 0' }}>
           <div className="title-art" style={{ fontSize:'clamp(54px, 9vw, 110px)', lineHeight:.85, marginBottom:6 }}>
-            STICK<br/>SCHOLAR
+            STICK<br/>BATTLE
           </div>
           <div className="title-sub" style={{ marginBottom:22 }}>welcome back, fighter</div>
           {/* TWO BIG BUTTONS — Log In | Sign Up */}
