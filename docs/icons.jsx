@@ -76,11 +76,11 @@ window.SFIcons = (function () {
     // Sumo: one broad-bodied wrestler in a wide stance (was two abstract
     // circles before — a single bold figure reads clearer at small sizes).
     mode_sumo:   p => svg(p,
-      circ(12,5.5,2.4),                                      // head
-      circ(12,3.2,.8,{fill:'currentColor',stroke:'none'}),    // topknot
-      path('M6 20c0-6 2.5-9 6-9s6 3 6 9'),                    // broad belly/torso
-      ln(8,12,5,10), ln(16,12,19,10),                         // arms out for balance
-      ln(9,20,7,23), ln(15,20,17,23)                          // wide stance legs
+      circ(12,5,2.3),                                         // head
+      circ(12,2.4,.7,{fill:'currentColor',stroke:'none'}),    // topknot
+      circ(12,15,6.3),                                        // round belly — clearly separate from the head
+      ln(6.2,13,3,16), ln(17.8,13,21,16),                     // short arm stubs out from the belly
+      ln(9,20.5,7,23), ln(15,20.5,17,23)                      // short stance legs
     ),
 
     // power-up categories
@@ -114,7 +114,7 @@ window.SFIcons = (function () {
     pu_kick:     p => svg(p, circ(9,5,2), path('M9 7l-1 6 5 2 4-5'), path('M13 15v5h4')),
     pu_combo:    p => svg(p, path('M5 8l4 4-4 4'), path('M11 8l4 4-4 4'), path('M17 8l3 4-3 4')),
     pu_crit:     p => svg(p, path('M12 3l2 6h6l-5 4 2 7-7-4-7 4 2-7-5-4h6l3-6z', {fill:'currentColor',stroke:'none'})),
-    pu_gun:      p => svg(p, path('M3 14h11l3-3h3v4h-2l-1 3H9l-1-3H3v-1z'), path('M14 14v-4h3v4')),
+    pu_gun:      p => svg(p, path('M6 11L21 11L21 14L9 14L7 20L4 20L4 15Z', {fill:'currentColor', stroke:'none'}), circ(9,16,1.6)),
     // Thief: a bandit eye-mask (was an ambiguous circle+dot target before).
     pu_thief:    p => svg(p, path('M3 9c0-1.5 1.7-2.5 4-2.5S9 8 12 8s2.7-1.5 5-1.5S21 7.5 21 9c0 3-2 5.5-4.5 5.5-1.7 0-3-1.2-3-3h-3c0 1.8-1.3 3-3 3C5 14.5 3 12 3 9z'), circ(7,9.5,1.2,{fill:'currentColor',stroke:'none'}), circ(17,9.5,1.2,{fill:'currentColor',stroke:'none'})),
     // Gravity flip: opposing up/down arrows, reads as "invert" at a glance.

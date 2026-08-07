@@ -1668,6 +1668,22 @@ window.StickFightGame = (function () {
               }
             }
             if (!stepFound) cache.jump = true;
+            // The bridge hazard (sawblade) sits ON a continuous platform, so
+            // the gap check above never trips for it — the bot would just
+            // keep walking straight into it, dying at the same spot every
+            // respawn. Jump early enough (~90px out) that it's already well
+            // airborne by the time it reaches the blade's x range, clearing
+            // the ~20px of headroom between the bridge and the blade's belly.
+            if (!cache.jump && state.hazards) {
+              for (const hz of state.hazards) {
+                if (hz.type !== 'sawblade' && hz.type !== 'instakill' && hz.type !== 'spike') continue;
+                const aheadX = p.x + p.facing * 90;
+                if (aheadX >= hz.x - 10 && aheadX <= hz.x + hz.w + 10 && Math.abs(hz.y - p.y) < 150) {
+                  cache.jump = true;
+                  break;
+                }
+              }
+            }
           }
           else if (target.y < p.y - 40 && p.onGround && Math.random() < cfg.jumpProb) cache.jump = true;
           // Attack decision — skipped in coin rush (no PvP damage) and while
