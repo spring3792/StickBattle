@@ -1067,31 +1067,49 @@ window.StickFightGame = (function () {
           // Tighter spawn cadence: enemies arrive faster as waves go up.
           td.waveTimer = Math.max(14, 50 - td.waveNum * 2.4);
           td.spawnLeft--;
-          // Random enemy type, weighted by wave. Types now appear earlier so
-          // even the first few waves mix in fast/armor/boss enemies.
-          const roll = Math.random();
-          let type = 'basic';
-          if (td.waveNum >= 4 && roll < 0.14) type = 'boss';
-          else if (td.waveNum >= 2 && roll < 0.30) type = 'armor';
-          else if (td.waveNum >= 1 && roll < 0.40) type = 'fast';
           const wave = td.waveNum;
-          let stats;
-          if (type === 'fast') {
-            stats = { hp:26 + wave*9,  speed:1.75 + wave*0.08, r:11, color:'#ffd76a' };
-          } else if (type === 'armor') {
-            stats = { hp:70 + wave*22, speed:0.7 + wave*0.05, r:18, color:'#b6bedc' };
-          } else if (type === 'boss') {
-            stats = { hp:220 + wave*55, speed:0.55 + wave*0.04, r:24, color:'#b03a8a' };
+          // Milestone boss wave: the LAST spawn of the wave is one massive
+          // boss instead of the usual random pick. Far tougher than the
+          // regular elite "boss" roll below — huge HP pool plus it heals
+          // back up if it goes untouched for a moment (see the regen check
+          // in the enemy-movement loop), so it actually demands sustained
+          // DPS instead of just soaking a few extra hits.
+          if (td.milestoneBossPending && td.spawnLeft === 0) {
+            td.milestoneBossPending = false;
+            const bossHp = 700 + wave * 140;
+            td.enemies.push({
+              type: 'boss', isMilestoneBoss: true, t: 0,
+              speed: 0.5 + wave * 0.015,
+              hp: bossHp, maxHp: bossHp, lastHp: bossHp, noHitFrames: 0,
+              color: '#6a0a2a', r: 30,
+              wig: Math.random() * Math.PI * 2,
+            });
           } else {
-            stats = { hp:28 + wave*12, speed:1.05 + wave*0.08, r:14, color:'#ff5b5b' };
+            // Random enemy type, weighted by wave. Types now appear earlier so
+            // even the first few waves mix in fast/armor/boss enemies.
+            const roll = Math.random();
+            let type = 'basic';
+            if (td.waveNum >= 4 && roll < 0.14) type = 'boss';
+            else if (td.waveNum >= 2 && roll < 0.30) type = 'armor';
+            else if (td.waveNum >= 1 && roll < 0.40) type = 'fast';
+            let stats;
+            if (type === 'fast') {
+              stats = { hp:26 + wave*9,  speed:1.75 + wave*0.08, r:11, color:'#ffd76a' };
+            } else if (type === 'armor') {
+              stats = { hp:70 + wave*22, speed:0.7 + wave*0.05, r:18, color:'#b6bedc' };
+            } else if (type === 'boss') {
+              stats = { hp:220 + wave*55, speed:0.55 + wave*0.04, r:24, color:'#b03a8a' };
+            } else {
+              stats = { hp:28 + wave*12, speed:1.05 + wave*0.08, r:14, color:'#ff5b5b' };
+            }
+            td.enemies.push({
+              type, t: 0,
+              speed: stats.speed,
+              hp: stats.hp, maxHp: stats.hp,
+              color: stats.color, r: stats.r,
+              wig: Math.random() * Math.PI * 2, // animation phase
+            });
           }
-          td.enemies.push({
-            type, t: 0,
-            speed: stats.speed,
-            hp: stats.hp, maxHp: stats.hp,
-            color: stats.color, r: stats.r,
-            wig: Math.random() * Math.PI * 2, // animation phase
-          });
         }
       } else if (td.enemies.length === 0) {
         if (!td.endless && td.waveNum >= td.maxWaves) {
@@ -1105,8 +1123,13 @@ window.StickFightGame = (function () {
         } else if (!td.waveReady) {
           // Wave finished — move to next and idle until player clicks Start.
           td.waveNum++;
-          // Bigger waves: ~7 + 2× scaled, capped at 30.
-          td.spawnLeft = 7 + Math.min(td.waveNum * 2, 25);
+          // Every 5th wave is a milestone boss wave: a small escort plus one
+          // massive boss (spawned last, see the spawn-tick below) instead of
+          // the usual random enemy mix. Bigger waves: ~7 + 2× scaled, capped at 30.
+          const isBossWave = td.waveNum % 5 === 0;
+          td.spawnLeft = isBossWave ? Math.min(9, 4 + Math.floor(td.waveNum / 10))
+                                     : 7 + Math.min(td.waveNum * 2, 25);
+          td.milestoneBossPending = isBossWave;
           td.waveTimer = 60 * 3;
           td.gold += 45;
           td.cpuGold = (td.cpuGold || 0) + 30; // bot also gets bonus
@@ -1116,12 +1139,26 @@ window.StickFightGame = (function () {
           if (td.waveNum === 2 || td.waveNum % 5 === 1) {
             spawnToast(state, `WAVE ${td.waveNum - 1} CLEARED`, '#5bff8a');
           }
+          if (isBossWave) {
+            spawnToast(state, `⚠ WAVE ${td.waveNum}: BOSS INCOMING`, '#ff4d2e');
+          }
         }
       }
 
       // Enemy movement (with frost slow factor)
       for (let i = td.enemies.length - 1; i >= 0; i--) {
         const e = td.enemies[i];
+        // Milestone boss regen — if it hasn't taken damage in the last
+        // ~1.5s, it heals back a slice of max HP every frame. Punishes
+        // scattershot chip damage; rewards towers that keep it locked down.
+        if (e.isMilestoneBoss) {
+          if (e.hp < e.lastHp) { e.noHitFrames = 0; }
+          else { e.noHitFrames = (e.noHitFrames || 0) + 1; }
+          e.lastHp = e.hp;
+          if (e.noHitFrames > 90 && e.hp > 0) {
+            e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.006);
+          }
+        }
         if (e.slowFor > 0) { e.slowFor--; }
         const speedFactor = e.slowFor > 0 ? (e.slowFactor || 0.6) : 1;
         // Store previous position so we can derive a facing direction for the
@@ -1160,7 +1197,16 @@ window.StickFightGame = (function () {
             spawnParticles(state, e.x, e.y, '#7bff5a', 18, 1.2);
           }
           td.enemies.splice(i, 1);
-          td.gold += 12;
+          if (e.isMilestoneBoss) {
+            td.gold += 200;
+            td.cpuGold = (td.cpuGold || 0) + 100;
+            spawnToast(state, 'BOSS DEFEATED! +200g', '#ffd76a');
+            spawnStarBurst(state, e.x, e.y, '#ff4d2e');
+            spawnParticles(state, e.x, e.y, '#ffd76a', 30, 2);
+            state.shake = Math.max(state.shake, 22);
+          } else {
+            td.gold += 12;
+          }
           SFX.enemyDie();
           if (human) human.score++;
         }
@@ -5285,7 +5331,7 @@ window.StickFightGame = (function () {
     for (const e of td.enemies) {
       const tinted = e.slowFor > 0 ? '#a5f3ff' : (e.poisonFor > 0 ? '#7bff5a' : e.color);
       const dark = '#0a0a14';
-      const s = e.type === 'fast' ? 0.9 : e.type === 'armor' ? 1.15 : e.type === 'boss' ? 1.6 : 1.0;
+      const s = e.isMilestoneBoss ? 2.3 : e.type === 'fast' ? 0.9 : e.type === 'armor' ? 1.15 : e.type === 'boss' ? 1.6 : 1.0;
       // Facing direction from movement vector. Default to +x if not moving.
       const face = (e.vx !== undefined && Math.abs(e.vx) > 0.01) ? (e.vx >= 0 ? 1 : -1) : 1;
       // Walk cycle phase. Scales with both type-speed and slow status.
@@ -5454,8 +5500,10 @@ window.StickFightGame = (function () {
         // Demonic crown + flowing cape behind body + glowing aura
         const pulse = (Math.sin(state.frame*0.08) + 1) * 0.5;
         ctx.save();
-        ctx.fillStyle = `rgba(255,77,46,${0.12 + pulse*0.12})`;
-        ctx.beginPath(); ctx.arc(e.x, e.y, 30 * s, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = e.isMilestoneBoss
+          ? `rgba(255,20,20,${0.16 + pulse*0.16})`
+          : `rgba(255,77,46,${0.12 + pulse*0.12})`;
+        ctx.beginPath(); ctx.arc(e.x, e.y, (e.isMilestoneBoss ? 34 : 30) * s, 0, Math.PI*2); ctx.fill();
         ctx.restore();
         // Cape — sways with walk
         const cSway = Math.sin(phase) * 3 * s;
@@ -5502,6 +5550,11 @@ window.StickFightGame = (function () {
         ctx.lineTo(e.x + 0.4 * s, headY + 5 * s);
         ctx.lineTo(e.x + 1.4 * s, headY + 2 * s);
         ctx.closePath(); ctx.fill();
+        if (e.isMilestoneBoss) {
+          ctx.fillStyle = '#ff4d2e';
+          ctx.font = "700 12px 'Bebas Neue'"; ctx.textAlign = 'center';
+          ctx.fillText('MEGA BOSS', e.x, headY - 20 * s);
+        }
       }
       // HP pip above head
       const hpRatio = Math.max(0, e.hp / e.maxHp);
@@ -5641,6 +5694,24 @@ window.StickFightGame = (function () {
       ctx.fillText(`MAP · ${td.pathId.toUpperCase()}`, 200, 38);
       ctx.fillStyle = '#7a6a92';
       ctx.fillText(td.endless ? 'ENDLESS' : 'CAMPAIGN', 200, 58);
+    }
+
+    // ============ BOSS HP BAR (milestone boss waves only) ============
+    const activeBoss = td.enemies.find(e => e.isMilestoneBoss);
+    if (activeBoss) {
+      const bw = 420, bh = 26, bx = (W - bw) / 2, by = 62;
+      const ratio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
+      ctx.fillStyle = 'rgba(8,4,18,.85)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = '#ff4d2e'; ctx.lineWidth = 2;
+      ctx.strokeRect(bx, by, bw, bh);
+      const hpG = ctx.createLinearGradient(bx, by, bx + bw, by);
+      hpG.addColorStop(0, '#8a1010'); hpG.addColorStop(1, '#ff4d2e');
+      ctx.fillStyle = hpG;
+      ctx.fillRect(bx + 2, by + 2, (bw - 4) * ratio, bh - 4);
+      ctx.fillStyle = '#fff';
+      ctx.font = "700 14px 'Bebas Neue'"; ctx.textAlign = 'center';
+      ctx.fillText(`MEGA BOSS · ${Math.max(0, Math.round(activeBoss.hp))} / ${activeBoss.maxHp}`, bx + bw/2, by + 18);
     }
 
     // ============ START WAVE + SPEED CONTROLS (top-center) ============
