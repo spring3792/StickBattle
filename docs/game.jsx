@@ -145,6 +145,11 @@ window.StickFightGame = (function () {
       sfxTone({ freq:880, dur:0.06, type:'triangle', vol:0.12 });
       setTimeout(() => sfxTone({ freq:1320, dur:0.10, type:'triangle', vol:0.12 }), 50);
     },
+    shoot() {
+      if (sfxThrottle('shoot', 50)) return;
+      sfxNoise({ dur:0.05, vol:0.22, freq:1600, q:3 });
+      sfxTone({ freq:180, dur:0.07, type:'square', vol:0.1, slide:-140 });
+    },
   };
 
   // ---------- world ----------
@@ -164,6 +169,19 @@ window.StickFightGame = (function () {
   const KICK_KB   = 11;
   const PUNCH_RANGE = 42;
   const KICK_RANGE  = 50;
+  // Fallback values only — every projectile carries its own dmg/kb from the
+  // weapon that fired it, these just guard against a malformed one.
+  const GUN_DMG = 9;
+  const GUN_KB  = 9;
+
+  // ---------- GUN MAYHEM: weapon table ----------
+  // pellets>1 fans out that many bullets per shot, each offset by `spread`
+  // radians for a shotgun-style cone. fireCd is in frames (kick cooldown).
+  const WEAPONS = [
+    { id:'pistol',  name:'Pistol',  ammo:8,  dmg:9, kb:9,  speed:15, fireCd:16, pellets:1, spread:0,    color:'#2a2a30' },
+    { id:'shotgun', name:'Shotgun', ammo:4,  dmg:6, kb:8,  speed:13, fireCd:32, pellets:3, spread:0.22, color:'#3a2418' },
+    { id:'smg',     name:'SMG',     ammo:20, dmg:4, kb:4,  speed:16, fireCd:7,  pellets:1, spread:0.05, color:'#20242c' },
+  ];
 
   // Fallback platforms used only if a stage doesn't supply its own.
   const DEFAULT_PLATFORMS = [
@@ -236,6 +254,8 @@ window.StickFightGame = (function () {
       animPhase: Math.random()*100,
       trailSamples:[],
       banana:0,
+      heldWeapon: null,
+      weaponFlash: 0,
       animPunch:0, animKick:0, animHurt:0,
       alive:true, dead:false, deadTimer:0,
       ragdoll:null,
@@ -360,6 +380,13 @@ window.StickFightGame = (function () {
         state.coinDrops = [];
         state.coinSpawn = 30;
         for (const p of state.players) { p.hp = p.maxHp || 100; }
+      }
+
+      // ----- GUN MAYHEM: weapons fall from the sky. Grab one, go blast. -----
+      if (state.mode === 'guns') {
+        state.weaponDrops = [];
+        state.weaponSpawn = 60;
+        for (const p of state.players) { p.heldWeapon = null; }
       }
 
       // ----- MINI GOLF (TRUE TOP-DOWN) -----
@@ -628,6 +655,21 @@ window.StickFightGame = (function () {
             if (state.frame % 6 === 0) damagePlayer(state, pl, 1, 0, 0, pr.owner);
           }
         }
+      } else if (pr.type === 'bullet') {
+        pr.x += pr.vx;
+        pr.y += (pr.vy||0);
+        let hit = false;
+        for (const pl of state.players) {
+          if (!pl.alive || pl.slot === pr.owner || pl.phaseLeft > 0) continue;
+          if (Math.abs(pl.x - pr.x) < 16 && Math.abs((pl.y - 30) - pr.y) < 26) {
+            const kbForce = (pr.kb || GUN_KB) / (pl.buffs.kbResist || 1);
+            damagePlayer(state, pl, pr.dmg || GUN_DMG, Math.sign(pr.vx) * kbForce, -3, pr.owner);
+            spawnParticles(state, pr.x, pr.y, '#ffe08a', 10, 1.4);
+            hit = true;
+            break;
+          }
+        }
+        if (hit || pr.x < -20 || pr.x > W + 20) { state.proj.splice(i,1); continue; }
       }
       if (pr.life <= 0) state.proj.splice(i,1);
     }
@@ -778,6 +820,57 @@ window.StickFightGame = (function () {
           }
         }
         if (picked) state.coinDrops.splice(i, 1);
+      }
+    }
+
+    // ---- GUN MAYHEM ----
+    if (state.mode === 'guns' && state.winner === null) {
+      state.weaponSpawn = (state.weaponSpawn || 0) - 1;
+      if (state.weaponSpawn <= 0) {
+        state.weaponSpawn = 200 + Math.floor(Math.random() * 220); // ~3.3-7s apart
+        const def = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+        state.weaponDrops = state.weaponDrops || [];
+        state.weaponDrops.push({
+          defId: def.id,
+          x: 60 + Math.random() * (W - 120),
+          y: -20,
+          vy: 0.6 + Math.random() * 0.6,
+          life: 0,
+        });
+      }
+      for (let i = (state.weaponDrops || []).length - 1; i >= 0; i--) {
+        const d = state.weaponDrops[i];
+        if (d.vy !== 0) {
+          d.vy = Math.min(5, (d.vy || 0) + 0.18);
+          const prevY = d.y;
+          d.y += d.vy;
+          // Land on the first platform it reaches, not just the ground floor
+          // — guns should end up reachable from the high routes too.
+          let landed = false;
+          for (const plat of state.platforms) {
+            if (d.x > plat.x && d.x < plat.x + plat.w && prevY <= plat.y && d.y >= plat.y) {
+              d.y = plat.y - 8; d.vy = 0; landed = true; break;
+            }
+          }
+          if (!landed && d.y > GROUND_Y - 8) { d.y = GROUND_Y - 8; d.vy = 0; }
+        }
+        // Despawn after ~15s unclaimed so the field doesn't fill up.
+        d.life++;
+        if (d.life > 900) { state.weaponDrops.splice(i, 1); continue; }
+        let picked = false;
+        for (const p of state.players) {
+          if (!p.alive) continue;
+          const dx = p.x - d.x, dy = (p.y - 24) - d.y;
+          if (dx*dx + dy*dy <= 26*26) {
+            const def = WEAPONS.find(w2 => w2.id === d.defId) || WEAPONS[0];
+            p.heldWeapon = { ...def, ammo: def.ammo, total: def.ammo };
+            spawnPopup(state, d.x, d.y - 14, def.name.toUpperCase(), '#ffe08a');
+            spawnStarBurst(state, d.x, d.y, '#ffe08a');
+            picked = true;
+            break;
+          }
+        }
+        if (picked) state.weaponDrops.splice(i, 1);
       }
     }
 
@@ -1038,6 +1131,18 @@ window.StickFightGame = (function () {
         }
       }
 
+      // BEACON aura — resolved as its own pass BEFORE anyone fires this frame
+      // so damage boosts are never one-frame-stale or array-order-dependent.
+      for (const t of td.towers) t._auraMul = 1;
+      for (const t of td.towers) {
+        if (t.kindId !== 'beacon') continue;
+        const mul = 1 + ((t.buffPct || 0) * (t.abilityActive > 0 ? 2 : 1)) / 100;
+        for (const t2 of td.towers) {
+          if (t2 === t || t2.kindId === 'beacon') continue;
+          if (Math.hypot(t2.x - t.x, t2.y - t.y) <= t.range) t2._auraMul = Math.max(t2._auraMul, mul);
+        }
+      }
+
       // Tower shooting
       for (const t of td.towers) {
         // Tick down ability cooldown and active-buff timer every frame.
@@ -1058,6 +1163,18 @@ window.StickFightGame = (function () {
           }
           continue;
         }
+        // BEACON: no attack of its own — aura already resolved in the pass above.
+        if (t.kindId === 'beacon') continue;
+        // TAR PIT: no attack — continuously bogs down every enemy in range.
+        if (t.kindId === 'tarpit') {
+          for (const e of td.enemies) {
+            if (Math.hypot(e.x - t.x, e.y - t.y) <= t.range) {
+              e.slowFor = Math.max(e.slowFor || 0, 20);
+              e.slowFactor = Math.min(e.slowFactor ?? 1, (t.slow && t.slow.factor) || 0.5);
+            }
+          }
+          continue;
+        }
         // LASER: continuous beam to nearest enemy in range, applies dmg every frame.
         // L3 Prism Split: also damages a second nearby enemy.
         if (t.kindId === 'laser') {
@@ -1068,7 +1185,7 @@ window.StickFightGame = (function () {
           }
           t._beamTarget = target;
           t._beamTarget2 = null;
-          const beamMult = t._beamBoost > 0 ? t._beamBoost : 1;
+          const beamMult = (t._beamBoost > 0 ? t._beamBoost : 1) * (t._auraMul || 1);
           if (target) {
             target.hp -= t.dmg * beamMult;
             if (state.frame % 4 === 0) {
@@ -1109,8 +1226,9 @@ window.StickFightGame = (function () {
             let cur = target;
             const hit = new Set();
             const maxChain = t.chainCount || 3;
+            const auraMul = t._auraMul || 1;
             for (let chain = 0; chain < maxChain && cur; chain++) {
-              cur.hp -= t.dmg;
+              cur.hp -= t.dmg * auraMul;
               if (t.stunFrames) cur.slowFor = Math.max(cur.slowFor||0, t.stunFrames * 6); // soft stun via heavy slow
               hit.add(cur);
               spawnParticles(state, cur.x, cur.y, t.turret, 5, 1);
@@ -1136,32 +1254,55 @@ window.StickFightGame = (function () {
             }
             continue;
           }
-          if (t.kindId === 'poison') {
-            // Apply DoT
-            target.hp -= t.dmg;
+          if (t.kindId === 'poison' || t.kindId === 'flame') {
+            // Apply DoT (Flamethrower reuses the poison DoT machinery — same
+            // tick pattern, just a burn instead of a toxin, kept apart only
+            // by color/flavor in the enemy render).
+            target.hp -= t.dmg * (t._auraMul || 1);
             target.poisonFor = 60 * (t.level >= 2 ? 4 : 3);
             target.poisonDps = t.level >= 3 ? 8 : 4;
             target.poisonPlague = !!t.plague;     // marks for plague-spread on death
             spawnParticles(state, target.x, target.y, t.turret, 6, 0.8);
             continue;
           }
+          if (t.kindId === 'multi') {
+            // Fires at N distinct enemies simultaneously instead of focusing one.
+            const slots = t.quadFeed ? 4 : 3;
+            const picks = [target];
+            for (const e of td.enemies) {
+              if (picks.length >= slots) break;
+              if (picks.includes(e)) continue;
+              if (Math.hypot(e.x - t.x, e.y - t.y) <= t.range) picks.push(e);
+            }
+            for (const pk of picks) {
+              td.proj.push({
+                x: t.x, y: t.y, target: pk, dmg: t.dmg * (t._auraMul || 1),
+                splash: 0, slow: null, pierce:false, crit:false, freezeChance:0,
+                speed: 14, color: t.turret, kindId: t.kindId, life: 90,
+              });
+            }
+            continue;
+          }
           // Standard projectile fire. Archer multishot fires N arrows at the
           // same target with a small angular spread.
           const shots = (t.kindId === 'basic' ? (t.multishot || 1) : 1);
           // HEADSHOT ability ready: super-charge this single shot, then clear flag.
-          const chargedMult = t._chargedShot ? 5 : 1;
+          const chargedMult = t._chargedShot ? (t._chargedMult || 5) : 1;
           const chargedPierce = !!t._chargedShot;
           for (let s = 0; s < shots; s++) {
             const offsetAng = shots > 1 ? ((s - (shots - 1) / 2) * 0.25) : 0;
             td.proj.push({
               x: t.x, y: t.y,
-              target, dmg: t.dmg * chargedMult,
+              target, dmg: t.dmg * chargedMult * (t._auraMul || 1),
               splash: t.splash || 0,
               slow: t.slow || null,
               pierce: !!t.pierce || chargedPierce,
               crit: !!t.crit || !!t._chargedShot,
               freezeChance: t.freezeChance || 0,
-              speed: t.kindId === 'sniper' ? 22 : t.kindId === 'cannon' ? 9 : 14,
+              lifesteal: !!t.lifesteal,
+              lifestealMul: t._lifestealMul || 1,
+              cluster: t.cluster || 0,
+              speed: t.kindId === 'sniper' ? 22 : t.kindId === 'railgun' ? 20 : t.kindId === 'cannon' || t.kindId === 'mortar' ? 9 : 14,
               color: t._chargedShot ? '#ffd76a' : t.turret,
               kindId: t.kindId,
               ang: offsetAng,
@@ -1230,6 +1371,12 @@ window.StickFightGame = (function () {
             p.target.slowFactor = 0.05;
             spawnPopup(state, p.target.x, p.target.y - 30, 'FROZEN', '#a5f3ff', true);
           }
+          // Vampire: a slice of the damage dealt heals the base back.
+          if (p.lifesteal) {
+            const heal = finalDmg * 0.12 * (p.lifestealMul || 1);
+            td.baseHp = Math.min(td.baseHpMax || td.baseHp, td.baseHp + heal);
+            spawnPopup(state, p.target.x, p.target.y - 32, `+${heal.toFixed(0)}hp`, '#ff2e6a');
+          }
           // splash
           if (p.splash > 0) {
             for (const e of td.enemies) {
@@ -1244,6 +1391,23 @@ window.StickFightGame = (function () {
             // splash visual
             spawnStarBurst(state, p.x, p.y, '#ff9a3c');
             spawnParticles(state, p.x, p.y, '#ff9a3c', 12, 1.4);
+            // Cluster Bomber: extra small bomblets scattered around the blast.
+            if (p.cluster > 0) {
+              for (let c = 0; c < p.cluster; c++) {
+                const ang = Math.random() * Math.PI * 2;
+                const bx = p.x + Math.cos(ang) * (p.splash * 0.6);
+                const by = p.y + Math.sin(ang) * (p.splash * 0.6);
+                for (const e of td.enemies) {
+                  const sd = Math.hypot(e.x - bx, e.y - by);
+                  if (sd < 30) {
+                    const sd2 = p.dmg * 0.35;
+                    e.hp -= sd2;
+                    spawnPopup(state, e.x, e.y - 14, Math.round(sd2), '#ffb347');
+                  }
+                }
+                spawnParticles(state, bx, by, '#ffb347', 6, 1);
+              }
+            }
           } else {
             spawnParticles(state, p.x, p.y, p.color || '#ffd76a', 5, 0.8);
           }
@@ -1373,6 +1537,8 @@ window.StickFightGame = (function () {
 
       // COIN RUSH: bots ignore opponents and chase the nearest coin instead.
       // Falls back to nearestEnemy if there are no coins on the field yet.
+      // GUN MAYHEM: unarmed bots chase the nearest weapon crate instead of
+      // fighting bare-handed; armed bots fight normally (with ranged reach).
       let target;
       if (state.mode === 'coins') {
         let best = null, bestD = Infinity;
@@ -1381,6 +1547,13 @@ window.StickFightGame = (function () {
           if (d < bestD) { bestD = d; best = { x: c.x, y: c.y + 24 }; }
         }
         target = best; // may be null if no coins are dropping yet
+      } else if (state.mode === 'guns' && !p.heldWeapon && (state.weaponDrops || []).length) {
+        let best = null, bestD = Infinity;
+        for (const d of state.weaponDrops) {
+          const dd = Math.hypot(d.x - p.x, d.y - (p.y - 24));
+          if (dd < bestD) { bestD = dd; best = { x: d.x, y: d.y + 24 }; }
+        }
+        target = best;
       } else {
         target = nearestEnemy(state, p);
       }
@@ -1397,11 +1570,17 @@ window.StickFightGame = (function () {
           // In coin rush, jump aggressively toward airborne coins.
           if (state.mode === 'coins' && target.y < p.y - 20 && p.onGround) cache.jump = true;
           else if (target.y < p.y - 40 && p.onGround && Math.random() < cfg.jumpProb) cache.jump = true;
-          // Attack decision — skipped in coin rush (no PvP damage in that mode).
-          if (state.mode !== 'coins') {
-            const range = PUNCH_RANGE * (b.reachMul||1) + cfg.reachBonus;
+          // Attack decision — skipped in coin rush (no PvP damage) and while
+          // chasing a weapon crate (target is a drop location, not a player).
+          const isEnemyTarget = state.players.includes(target);
+          if (state.mode !== 'coins' && isEnemyTarget) {
+            const armed = !!p.heldWeapon;
+            // Armed bots engage from ranged distance instead of walking into
+            // melee range first — otherwise a gun mode plays like a fistfight.
+            const range = armed ? 520 : (PUNCH_RANGE * (b.reachMul||1) + cfg.reachBonus);
             if (Math.abs(dx) < range && Math.abs(target.y - p.y) < 40 && Math.random() < cfg.attackProb) {
-              if (Math.random() < 0.5) cache.punch = true; else cache.kick = true;
+              if (armed) cache.kick = true;
+              else if (Math.random() < 0.5) cache.punch = true; else cache.kick = true;
             }
           } else {
             cache.punch = false; cache.kick = false;
@@ -1755,6 +1934,7 @@ window.StickFightGame = (function () {
     if (p.animPunch > 0) p.animPunch--;
     if (p.animKick > 0) p.animKick--;
     if (p.animHurt > 0) p.animHurt--;
+    if (p.weaponFlash > 0) p.weaponFlash--;
     p.animPhase += Math.abs(p.vx) > 1 ? 0.32 : 0.08;
 
     const atkScale = 1 / (b.atkSpdMul || 1);
@@ -1764,9 +1944,32 @@ window.StickFightGame = (function () {
       doMelee(state, p, PUNCH_RANGE * (b.reachMul||1), PUNCH_DMG * (b.punchMul||1), PUNCH_KB, false);
     }
     if (input.kick && p.kickCd <= 0 && p.cd <= 0) {
-      p.kickCd = KICK_COOLDOWN * atkScale;
-      p.animKick = 14;
-      doMelee(state, p, KICK_RANGE * (b.reachMul||1), KICK_DMG * (b.punchMul||1), KICK_KB * (b.kickKbMul||1), true);
+      if (p.heldWeapon && p.heldWeapon.ammo > 0) {
+        const w = p.heldWeapon;
+        p.kickCd = w.fireCd * atkScale;
+        p.weaponFlash = 6;
+        w.ammo--;
+        const pellets = w.pellets || 1;
+        for (let i = 0; i < pellets; i++) {
+          const off = pellets > 1 ? (i - (pellets-1)/2) * (w.spread||0) : 0;
+          state.proj.push({
+            type:'bullet', owner:p.slot,
+            x:p.x + p.facing*22, y:p.y-44,
+            vx: p.facing * w.speed * Math.cos(off),
+            vy: w.speed * Math.sin(off),
+            dmg: w.dmg * (b.punchMul||1), kb: w.kb,
+            life:200,
+          });
+        }
+        spawnParticles(state, p.x + p.facing*22, p.y-44, '#ffe08a', pellets > 1 ? 8 : 4, 0.8);
+        SFX.shoot();
+        if (w.ammo <= 0) p.heldWeapon = null;
+      } else {
+        p.heldWeapon = null;
+        p.kickCd = KICK_COOLDOWN * atkScale;
+        p.animKick = 14;
+        doMelee(state, p, KICK_RANGE * (b.reachMul||1), KICK_DMG * (b.punchMul||1), KICK_KB * (b.kickKbMul||1), true);
+      }
     }
 
     if (b.bananas && p.banana <= 0 && state.frame % 4 === 0 && Math.abs(p.vx) > 1) {
@@ -2111,7 +2314,79 @@ window.StickFightGame = (function () {
       ],
       ability:{ id:'jackpot', name:'JACKPOT', desc:'Instantly pays out +60 gold.', cooldownSec:50 },
     },
+    { id:'mortar', name:'Mortar', cost:170, range:115, atkCd:75, dmg:22, color:'#4a3a1a', turret:'#ff7a3c',
+      desc:'Lobs a huge shell — biggest splash radius of any tower.',
+      upgrades:[
+        '+60% damage, +15% range, +15% fire rate',
+        'Big Bertha: splash radius up another 40%',
+      ],
+      ability:{ id:'saturation', name:'SATURATION', desc:'6 huge shells rain across the path.', cooldownSec:26 },
+    },
+    { id:'railgun', name:'Railgun', cost:260, range:340, atkCd:85, dmg:55, color:'#1a1a2a', turret:'#7cf6ff',
+      desc:'Glass cannon — colossal single-target damage, brutally slow, huge range.',
+      upgrades:[
+        '+60% damage, +15% range, +15% fire rate',
+        'Overcharged Coils: every shot pierces + crits',
+      ],
+      ability:{ id:'piercinground', name:'PIERCING ROUND', desc:'Next shot deals 6× damage and always crits.', cooldownSec:20 },
+    },
+    { id:'flame',   name:'Flamethrower', cost:110, range:90,  atkCd:9,  dmg:3,  color:'#5a2210', turret:'#ff9a3c',
+      desc:'Short range, blisteringly fast. Burns targets over time.',
+      upgrades:[
+        '+60% damage, longer burn, faster fire rate',
+        'Wildfire: burn spreads to nearby enemies',
+      ],
+      ability:{ id:'inferno', name:'INFERNO', desc:'Drops a burning patch that scorches the path.', cooldownSec:22 },
+    },
+    { id:'cluster', name:'Cluster Bomber', cost:200, range:120, atkCd:80, dmg:18, color:'#3a2a1a', turret:'#ffb347',
+      desc:'Splash impact scatters 3 extra bomblets around the blast.',
+      upgrades:[
+        '+60% damage, +20% splash radius',
+        'Saturation Fuze: 5 bomblets instead of 3',
+      ],
+      ability:{ id:'carpetbomb', name:'CARPET BOMB', desc:'6 scattered explosions across the path.', cooldownSec:24 },
+    },
+    { id:'vampire', name:'Vampire', cost:150, range:130, atkCd:26, dmg:12, color:'#2a0a1a', turret:'#ff2e6a',
+      desc:'Every hit drains a sliver of damage back into your base HP.',
+      upgrades:[
+        '+60% damage, +15% range, +15% fire rate',
+        'Blood Frenzy: lifesteal percentage doubles',
+      ],
+      ability:{ id:'bloodpact', name:'BLOOD PACT', desc:'Instantly restores base HP.', cooldownSec:35 },
+    },
+    { id:'beacon',  name:'Beacon', cost:180, range:150, atkCd:0, dmg:0, color:'#3a2a5a', turret:'#c58bff',
+      desc:'Support — no attack of its own. Boosts every tower damage in range.',
+      upgrades:[
+        '+10% damage boost, +15% range',
+        'Resonance: boost aura widens and strengthens further',
+      ],
+      ability:{ id:'surge', name:'SURGE', desc:'Doubles the aura boost for 6 seconds.', cooldownSec:28 },
+    },
+    { id:'tarpit',  name:'Tar Pit', cost:90,  range:110, atkCd:0, dmg:0, color:'#1a1a14', turret:'#8a7a3a',
+      desc:'Support — no attack. Bogs down every enemy standing in range.',
+      upgrades:[
+        'Stronger slow, +15% range',
+        'Quagmire: enemies in range nearly grind to a halt',
+      ],
+      ability:{ id:'quicksand', name:'QUICKSAND', desc:'Every enemy on the map is bogged down for 3 seconds.', cooldownSec:30 },
+    },
+    { id:'multi',   name:'Multi-Turret', cost:190, range:135, atkCd:22, dmg:9, color:'#2a3a2a', turret:'#5aff9a',
+      desc:'Fires at 3 different enemies at once instead of focusing one target.',
+      upgrades:[
+        '+60% damage, +15% range, +15% fire rate',
+        'Quad Feed: fires at a 4th target simultaneously',
+      ],
+      ability:{ id:'multivolley', name:'FULL SPREAD', desc:'Instantly fires at every enemy on the path.', cooldownSec:20 },
+    },
   ];
+  // Per-kind base fields that aren't in TD_TOWER_KINDS itself — applied once
+  // at tower creation (both player-built and CPU-built) alongside the
+  // existing cannon-splash / frost-slow special cases.
+  const TD_SPLASH_BASE = { cannon:50, mortar:65, cluster:45 };
+  const TD_SLOW_BASE = {
+    frost:  { factor:0.55, durSec:2 },
+    tarpit: { factor:0.5,  durSec:0.6 },
+  };
   // ---------- TD path layouts ----------
   // Each layout returns a list of waypoints from the left edge (entry) to
   // the right edge (base). Designed so towers can be placed in the gaps.
@@ -2391,8 +2666,11 @@ window.StickFightGame = (function () {
         atkCd: 0, atkRate: kind.atkCd,
         dmg: kind.dmg,
         color: kind.color, turret: kind.turret,
-        splash: kind.id === 'cannon' ? 50 : 0,
-        slow:   kind.id === 'frost'  ? { factor:0.55, durSec:2 } : null,
+        splash: TD_SPLASH_BASE[kind.id] || 0,
+        slow:   TD_SLOW_BASE[kind.id] ? { ...TD_SLOW_BASE[kind.id] } : null,
+        lifesteal: kind.id === 'vampire',
+        cluster: kind.id === 'cluster' ? 3 : 0,
+        buffPct: kind.id === 'beacon' ? 25 : 0,
         baseCost: kind.cost,
         abilityCd: 60 * 5,       // CPU waits 5s before first cast
         abilityActive: 0,
@@ -2425,10 +2703,13 @@ window.StickFightGame = (function () {
       atkCd: 0, atkRate: kind.atkCd,
       dmg: kind.dmg,
       color: kind.color, turret: kind.turret,
-      // for cannon (splash radius)
-      splash: kind.id === 'cannon' ? 50 : 0,
-      // for frost (slow strength + duration)
-      slow:   kind.id === 'frost'  ? { factor:0.55, durSec:2 } : null,
+      // splash radius (cannon, mortar, cluster)
+      splash: TD_SPLASH_BASE[kind.id] || 0,
+      // slow strength + duration (frost, tar pit)
+      slow:   TD_SLOW_BASE[kind.id] ? { ...TD_SLOW_BASE[kind.id] } : null,
+      lifesteal: kind.id === 'vampire',      // % of each hit heals base HP
+      cluster: kind.id === 'cluster' ? 3 : 0, // extra scatter bomblets on impact
+      buffPct: kind.id === 'beacon' ? 25 : 0, // % dmg aura granted to towers in range
       baseCost: kind.cost,
       // ===== Active ability =====
       // ready=0 means the ability is immediately usable. cooldown is in frames.
@@ -2583,6 +2864,7 @@ window.StickFightGame = (function () {
       if (t.splash > 0) t.splash = Math.round(t.splash * 1.2);
       if (t.slow) { t.slow.durSec += 0.5; t.slow.factor = Math.max(0.35, t.slow.factor - 0.1); }
       if (t.kindId === 'sun') t.payout = 45; // L2 Gold Mine output
+      if (t.kindId === 'beacon') t.buffPct = (t.buffPct || 25) + 10; // L2 stronger aura
     } else if (t.level === 3) {
       // L3 perks per tower kind.
       switch (t.kindId) {
@@ -2622,6 +2904,39 @@ window.StickFightGame = (function () {
           break;
         case 'sun':
           t.payout = 80;                           // L3 Gold Mine output
+          break;
+        case 'mortar':
+          t.splash = Math.round(t.splash * 1.4);   // Big Bertha: even bigger blast
+          t.dmg = Math.round(t.dmg * 1.3);
+          break;
+        case 'railgun':
+          t.pierce = true;
+          t.crit = true;                           // every shot always crits
+          t.dmg = Math.round(t.dmg * 1.3);
+          break;
+        case 'flame':
+          t.plague = true;                         // Wildfire: burn spreads on death
+          t.dmg = Math.round(t.dmg * 1.4);
+          break;
+        case 'cluster':
+          t.cluster = 5;                           // Saturation Fuze: 5 bomblets
+          t.dmg = Math.round(t.dmg * 1.25);
+          break;
+        case 'vampire':
+          t._lifestealMul = 2;                     // Blood Frenzy: double the drain
+          t.dmg = Math.round(t.dmg * 1.3);
+          break;
+        case 'beacon':
+          t.buffPct = (t.buffPct || 25) + 15;       // Resonance: wider + stronger
+          t.range = Math.round(t.range * 1.3);
+          break;
+        case 'tarpit':
+          t.slow.factor = 0.15;                     // Quagmire: near-full stop
+          t.range = Math.round(t.range * 1.15);
+          break;
+        case 'multi':
+          t.quadFeed = true;                        // Quad Feed: 4th simultaneous target
+          t.dmg = Math.round(t.dmg * 1.25);
           break;
         default:
           t.dmg = Math.round(t.dmg * 1.4);
@@ -2751,6 +3066,101 @@ window.StickFightGame = (function () {
         spawnPopup(state, t.x, t.y - 30, '+60 GOLD!', '#ffd76a');
         break;
       }
+      case 'saturation': {
+        // 6 huge shells across enemies (or random path points if none).
+        const pool = td.enemies.length > 0 ? td.enemies : td.path;
+        if (pool.length === 0) return false;
+        for (let i = 0; i < 6; i++) {
+          const pick = pool[Math.floor(Math.random() * pool.length)];
+          const dx = pick.x + (Math.random()*50-25);
+          const dy = pick.y + (Math.random()*50-25);
+          const dmg = t.dmg * 2, splash = 130;
+          for (const e of td.enemies) {
+            const d = Math.hypot(e.x - dx, e.y - dy);
+            if (d <= splash) e.hp -= dmg * (1 - d / (splash * 1.3));
+          }
+          spawnStarBurst(state, dx, dy, '#ff7a3c');
+          spawnParticles(state, dx, dy, '#ff9a3c', 18, 1.5);
+        }
+        spawnPopup(state, t.x, t.y - 30, 'SATURATION!', '#ff7a3c');
+        break;
+      }
+      case 'piercinground': {
+        // Next shot: 6× damage, always crits + pierces.
+        t._chargedShot = true;
+        t._chargedMult = 6;
+        spawnStarBurst(state, t.x, t.y, '#7cf6ff');
+        spawnPopup(state, t.x, t.y - 30, 'CHARGED', '#7cf6ff');
+        break;
+      }
+      case 'inferno': {
+        // A burning patch at the nearest path point in range.
+        let bestP = null, bestD = Infinity;
+        for (const p of td.path) {
+          const d = Math.hypot(p.x - t.x, p.y - t.y);
+          if (d < bestD) { bestD = d; bestP = p; }
+        }
+        const cx = bestP ? bestP.x : t.x;
+        const cy = bestP ? bestP.y : t.y;
+        td.clouds = td.clouds || [];
+        td.clouds.push({ x: cx, y: cy, r: 65, life: 300, dps: t.dmg * 1.5, color: '#ff7a3c' });
+        spawnPopup(state, t.x, t.y - 30, 'INFERNO!', '#ff7a3c');
+        break;
+      }
+      case 'carpetbomb': {
+        const pool = td.enemies.length > 0 ? td.enemies : td.path;
+        if (pool.length === 0) return false;
+        for (let i = 0; i < 6; i++) {
+          const pick = pool[Math.floor(Math.random() * pool.length)];
+          const dx = pick.x + (Math.random()*60-30);
+          const dy = pick.y + (Math.random()*60-30);
+          const dmg = t.dmg * 1.6, splash = 70;
+          for (const e of td.enemies) {
+            const d = Math.hypot(e.x - dx, e.y - dy);
+            if (d <= splash) e.hp -= dmg * (1 - d / (splash * 1.3));
+          }
+          spawnStarBurst(state, dx, dy, '#ffb347');
+          spawnParticles(state, dx, dy, '#ffb347', 10, 1.2);
+        }
+        spawnPopup(state, t.x, t.y - 30, 'CARPET BOMB!', '#ffb347');
+        break;
+      }
+      case 'bloodpact': {
+        const heal = 25;
+        td.baseHp = Math.min(td.baseHpMax || td.baseHp, td.baseHp + heal);
+        spawnStarBurst(state, t.x, t.y, '#ff2e6a');
+        spawnPopup(state, t.x, t.y - 30, `+${heal} BASE HP`, '#ff2e6a');
+        break;
+      }
+      case 'surge': {
+        // Doubles the aura boost for 6 seconds (read by the Beacon pre-pass).
+        t.abilityActive = 360;
+        spawnStarBurst(state, t.x, t.y, '#c58bff');
+        spawnPopup(state, t.x, t.y - 30, 'SURGE!', '#c58bff');
+        break;
+      }
+      case 'quicksand': {
+        for (const e of td.enemies) {
+          e.slowFor = Math.max(e.slowFor || 0, 180);
+          e.slowFactor = Math.min(e.slowFactor ?? 1, 0.2);
+        }
+        spawnStarBurst(state, t.x, t.y, '#8a7a3a');
+        spawnPopup(state, t.x, t.y - 30, 'QUICKSAND!', '#8a7a3a');
+        break;
+      }
+      case 'multivolley': {
+        if (td.enemies.length === 0) return false;
+        for (const e of td.enemies) {
+          td.proj.push({
+            x: t.x, y: t.y, target: e, dmg: t.dmg,
+            splash: 0, slow: null, speed: 16, color: t.turret, kindId: t.kindId,
+            life: 60,
+          });
+        }
+        spawnStarBurst(state, t.x, t.y, t.turret);
+        spawnPopup(state, t.x, t.y - 30, 'FULL SPREAD!', t.turret);
+        break;
+      }
       default: return false;
     }
     t.abilityCd = cdFrames;
@@ -2771,13 +3181,17 @@ window.StickFightGame = (function () {
   }
   function tdSelectTowerAt(state, x, y) {
     // Click in panel area also dispatches kind selection. Returns true if hit.
+    // Mirrors the shop panel's row/col layout in the draw code exactly.
     const td = state.td;
     if (!td) return false;
+    const TD_SHOP_COLS = 8;
     const slots = td.towerKinds.length;
-    const slotW = 95, slotH = 64, baseX = 14, baseY = H - 90;
+    const slotW = 95, slotH = 64, baseX = 14, baseY = H - 90, rowGap = 8;
     for (let i = 0; i < slots; i++) {
-      const sx = baseX + i * (slotW + 6);
-      if (x >= sx && x < sx + slotW && y >= baseY && y < baseY + slotH) {
+      const row = Math.floor(i / TD_SHOP_COLS), col = i % TD_SHOP_COLS;
+      const sx = baseX + col * (slotW + 6);
+      const sy = baseY - row * (slotH + rowGap);
+      if (x >= sx && x < sx + slotW && y >= sy && y < sy + slotH) {
         td.selectedKind = td.towerKinds[i].id;
         return true;
       }
@@ -2891,6 +3305,29 @@ window.StickFightGame = (function () {
           ctx.textAlign = 'center';
           ctx.fillText('$', c.x, c.y + 5);
         }
+      }
+    }
+    // ----- GUN MAYHEM: render falling weapon crates -----
+    if (state.mode === 'guns' && state.weaponDrops) {
+      for (const d of state.weaponDrops) {
+        const def = WEAPONS.find(w => w.id === d.defId) || WEAPONS[0];
+        ctx.fillStyle = 'rgba(0,0,0,.3)';
+        ctx.beginPath(); ctx.ellipse(d.x, GROUND_Y - 4, 12, 3, 0, 0, Math.PI * 2); ctx.fill();
+        // A little bob so it reads as "landed" rather than frozen mid-air.
+        const bob = d.vy === 0 ? Math.sin(state.frame * 0.08 + d.x) * 2 : 0;
+        ctx.save();
+        ctx.translate(d.x, d.y + bob);
+        ctx.fillStyle = 'rgba(255,224,138,.18)';
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI*2); ctx.fill();
+        ctx.save();
+        ctx.scale(1.15, 1.15);
+        drawWeaponShape(ctx, def.id, def.color);
+        ctx.restore();
+        ctx.fillStyle = '#ffe08a';
+        ctx.font = "700 7px 'Rajdhani'";
+        ctx.textAlign = 'center';
+        ctx.fillText(def.name.toUpperCase(), 0, 15);
+        ctx.restore();
       }
     }
     if (state.mode === 'parkour' && state.finish) {
@@ -3079,6 +3516,17 @@ window.StickFightGame = (function () {
         ctx.beginPath(); ctx.arc(pr.x, pr.y, 12 + Math.sin(state.frame*0.3+pr.x)*2, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = `rgba(255,220,80,${alpha})`;
         ctx.beginPath(); ctx.arc(pr.x, pr.y, 6, 0, Math.PI*2); ctx.fill();
+      } else if (pr.type === 'bullet') {
+        const vlen = Math.hypot(pr.vx, pr.vy||0) || 1;
+        const nx = pr.vx/vlen, ny = (pr.vy||0)/vlen;
+        ctx.strokeStyle = '#fff6c8';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(pr.x - nx*16, pr.y - ny*16);
+        ctx.lineTo(pr.x, pr.y);
+        ctx.stroke();
+        ctx.fillStyle = '#ffe08a';
+        ctx.beginPath(); ctx.arc(pr.x, pr.y, 2.6, 0, Math.PI*2); ctx.fill();
       }
     }
 
@@ -3677,6 +4125,146 @@ window.StickFightGame = (function () {
       const p = (Math.sin(state.frame * 0.18) + 1) * 0.5;
       ctx.fillStyle = `rgba(255,255,255,${0.5 + p * 0.5})`;
       ctx.fillRect(cx - face * 7, gy - 2, 1, 1);
+
+    } else if (kind === 'mortar') {
+      // MORTAR: stubby wide-mouth barrel on a tripod, angled up to lob shells.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 6, shoulderY + 5);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 5, shoulderY + 2);
+      ctx.stroke();
+      const mx = cx + face * 9;
+      ctx.strokeStyle = '#3a2a12'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mx - 4, gy); ctx.lineTo(mx, gy - 12); ctx.lineTo(mx + 4, gy); ctx.stroke();
+      ctx.fillStyle = '#4a3a1a';
+      ctx.save(); ctx.translate(mx, gy - 8); ctx.rotate(-face * 0.5);
+      ctx.fillRect(-4, -12, 8, 14);
+      ctx.fillStyle = '#1a1408';
+      ctx.beginPath(); ctx.arc(0, -12, 4, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+
+    } else if (kind === 'railgun') {
+      // RAILGUN: long twin-rail rifle with a glowing energy strip.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 7, shoulderY + 3);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 10, shoulderY);
+      ctx.stroke();
+      ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 2.8;
+      ctx.beginPath(); ctx.moveTo(cx - face*2, shoulderY+1); ctx.lineTo(cx + face*20, shoulderY+1); ctx.stroke();
+      const glow = (Math.sin(state.frame * 0.2) + 1) * 0.5;
+      ctx.strokeStyle = `rgba(124,246,255,${0.5+glow*0.5})`; ctx.lineWidth = 1.2;
+      ctx.shadowColor = '#7cf6ff'; ctx.shadowBlur = 5;
+      ctx.beginPath(); ctx.moveTo(cx - face*2, shoulderY+1); ctx.lineTo(cx + face*20, shoulderY+1); ctx.stroke();
+      ctx.shadowBlur = 0;
+
+    } else if (kind === 'flame') {
+      // FLAMETHROWER: short nozzle with a flickering idle flame at the tip.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY + 4);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 8, shoulderY + 1);
+      ctx.stroke();
+      ctx.fillStyle = '#2a1a12';
+      ctx.fillRect(cx + (face<0?-11:3), shoulderY-1, 8, 4);
+      const flick = 3 + Math.sin(state.frame * 0.5) * 1.5;
+      ctx.fillStyle = '#ff9a3c';
+      ctx.beginPath();
+      ctx.moveTo(cx + face*11, shoulderY+1);
+      ctx.lineTo(cx + face*(11+flick), shoulderY-1.5);
+      ctx.lineTo(cx + face*(14+flick), shoulderY+1);
+      ctx.lineTo(cx + face*(11+flick), shoulderY+3.5);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffe08a';
+      ctx.beginPath(); ctx.arc(cx + face*12, shoulderY+1, 1.4, 0, Math.PI*2); ctx.fill();
+
+    } else if (kind === 'cluster') {
+      // CLUSTER BOMBER: triple-tube launcher slung forward.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 6, shoulderY + 5);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 5, shoulderY + 3);
+      ctx.stroke();
+      ctx.fillStyle = '#3a2a1a';
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath(); ctx.arc(cx + face*10, shoulderY + i*4, 2.4, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1; ctx.stroke();
+      }
+
+    } else if (kind === 'vampire') {
+      // VAMPIRE: hooded silhouette with a clawed reaching hand, glowing eyes.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 8, shoulderY + 6);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 3, shoulderY + 5);
+      ctx.stroke();
+      ctx.strokeStyle = '#ff2e6a'; ctx.lineWidth = 1.4;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx + face * 8, shoulderY + 6);
+        ctx.lineTo(cx + face * (11 + i), shoulderY + 6 + i*2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#ff2e6a';
+      ctx.shadowColor = '#ff2e6a'; ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.arc(cx + face*1.6, headY-0.6, 0.6, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + face*1.6+1.4, headY-0.6, 0.6, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+
+    } else if (kind === 'beacon') {
+      // BEACON: staff topped with a pulsing crystal that radiates soft rings.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 5, shoulderY + 7);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY - 3);
+      ctx.stroke();
+      ctx.strokeStyle = '#5a3a7a'; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(cx + face*6, gy+2); ctx.lineTo(cx + face*6, headY-8); ctx.stroke();
+      const px = cx + face*6, py = headY - 12;
+      const pulse = (Math.sin(state.frame * 0.1) + 1) * 0.5;
+      ctx.strokeStyle = `rgba(197,139,255,${0.25+pulse*0.25})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(px, py, 8 + pulse*4, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = '#c58bff';
+      ctx.shadowColor = '#c58bff'; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+
+    } else if (kind === 'tarpit') {
+      // TAR PIT: no weapon prop — a dark bubbling puddle at the tower's feet.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx - face * 4, shoulderY + 5);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 4, shoulderY + 5);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(20,18,10,.85)';
+      ctx.beginPath(); ctx.ellipse(cx, gy + 4, 13, 4, 0, 0, Math.PI*2); ctx.fill();
+      const bub = (state.frame * 0.07) % 1;
+      ctx.fillStyle = 'rgba(138,122,58,.7)';
+      ctx.beginPath(); ctx.arc(cx - 4, gy + 4 - bub*3, 1.2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 5, gy + 3 - ((bub+0.5)%1)*3, 1, 0, Math.PI*2); ctx.fill();
+
+    } else if (kind === 'multi') {
+      // MULTI-TURRET: three short barrels fanned out on a swivel mount.
+      ctx.beginPath();
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY + 4);
+      ctx.moveTo(cx, shoulderY);
+      ctx.lineTo(cx + face * 6, shoulderY - 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#2a3a2a'; ctx.lineWidth = 2.2;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx + face*4, shoulderY + i*3);
+        ctx.lineTo(cx + face*13, shoulderY + i*4);
+        ctx.stroke();
+      }
     }
 
     // -- level pips above head --
@@ -3798,25 +4386,24 @@ window.StickFightGame = (function () {
     // (one slightly forward, one slightly back in the facing direction) and
     // swings along the facing axis as `stride` cycles. The swinging foot
     // lifts off the ground for the step.
-    ctx.strokeStyle = p.darkColor || '#222';
-    ctx.lineWidth = 4;
+    const legColor = p.darkColor || '#222';
     // Back leg — base ~3 px behind, swings -stride (opposite phase to front).
     const blKneeX = -p.facing * 3 + p.facing * (-stride) * 0.5;
     const blKneeY = -16 - blLift * 1.4 - hipBob;
     const blFootX = -p.facing * 5 + p.facing * (-stride) * 1.2;
     const blFootY = legBot - blLift * 3;
-    ctx.beginPath();
-    ctx.moveTo(0, bodyBot - hipBob); ctx.lineTo(blKneeX, blKneeY); ctx.lineTo(blFootX, blFootY);
-    ctx.stroke();
+    drawTaperedLimb(ctx,
+      [[0, bodyBot - hipBob], [blKneeX, blKneeY], [blFootX, blFootY]],
+      [5, 4.2, 3.2], legColor);
     // Front leg — base ~3 px ahead, swings +stride. Kick overrides the swing.
     const kickLift = p.animKick > 0 ? 20 : 0;
     const flKneeX = p.facing * 3 + p.facing * stride * 0.5 + (p.animKick > 0 ? p.facing*10 : 0);
     const flKneeY = -16 - flLift * 1.4 - hipBob - (p.animKick > 0 ? 8 : 0);
     const flFootX = p.facing * 5 + p.facing * stride * 1.2 + (p.animKick > 0 ? p.facing*18 : 0);
     const flFootY = legBot - flLift * 3 - kickLift;
-    ctx.beginPath();
-    ctx.moveTo(0, bodyBot - hipBob); ctx.lineTo(flKneeX, flKneeY); ctx.lineTo(flFootX, flFootY);
-    ctx.stroke();
+    drawTaperedLimb(ctx,
+      [[0, bodyBot - hipBob], [flKneeX, flKneeY], [flFootX, flFootY]],
+      [5, 4.2, 3.2], legColor);
 
     // FEET (small dots/wedges)
     ctx.fillStyle = p.darkColor || '#222';
@@ -3837,26 +4424,25 @@ window.StickFightGame = (function () {
     // ARMS — counter-swing the legs (front leg forward → back arm forward).
     // armSwing carries the same sign as stride; subtract on front arm so it
     // moves OPPOSITE to the front leg; add on back arm so it moves WITH it.
-    ctx.strokeStyle = p.darkColor || '#222';
-    ctx.lineWidth = 3.8;
+    const armColor = p.darkColor || '#222';
     const punchT = p.animPunch / 10;
     // back arm — swings forward when front leg swings back (i.e. with armSwing)
     const baElbowX = -p.facing * 5 + p.facing * armSwing * 0.5;
     const baElbowY = bodyTop + 13 - hipBob;
     const baHandX = -p.facing * 9 + p.facing * armSwing * 0.9;
     const baHandY = bodyTop + 21 - hipBob;
-    ctx.beginPath();
-    ctx.moveTo(0, bodyTop + 5 - hipBob); ctx.lineTo(baElbowX, baElbowY); ctx.lineTo(baHandX, baHandY);
-    ctx.stroke();
+    drawTaperedLimb(ctx,
+      [[0, bodyTop + 5 - hipBob], [baElbowX, baElbowY], [baHandX, baHandY]],
+      [4.4, 3.6, 2.6], armColor);
     // front arm (punching) — swings opposite to front leg.
     const faExtend = p.animPunch > 0 ? 15 : 0;
     const faElbowX = p.facing * (7 + faExtend*0.4) - p.facing * armSwing * 0.5;
     const faElbowY = bodyTop + 12 - hipBob - (p.animPunch > 0 ? 4 : 0);
     const faHandX = p.facing * (13 + faExtend) - p.facing * armSwing * 0.9;
     const faHandY = bodyTop + 16 - hipBob - (p.animPunch > 0 ? 8 : 0);
-    ctx.beginPath();
-    ctx.moveTo(0, bodyTop + 5 - hipBob); ctx.lineTo(faElbowX, faElbowY); ctx.lineTo(faHandX, faHandY);
-    ctx.stroke();
+    drawTaperedLimb(ctx,
+      [[0, bodyTop + 5 - hipBob], [faElbowX, faElbowY], [faHandX, faHandY]],
+      [4.4, 3.6, 2.6], armColor);
 
     // OUTFIT (front layer, e.g. shirts/jackets/armor) — drawn AFTER arms so
     // chest plates and shirts visually sit in front of the body and arms.
@@ -3875,11 +4461,63 @@ window.StickFightGame = (function () {
     ctx.beginPath(); ctx.arc(baHandX, baHandY, 2.4, 0, Math.PI*2); ctx.stroke();
     ctx.beginPath(); ctx.arc(faHandX, faHandY, 2.4 + (punchT*1), 0, Math.PI*2); ctx.stroke();
 
+    // HELD WEAPON — drawn in the front hand while a Gun Mayhem pickup is armed.
+    if (p.heldWeapon) {
+      const w = p.heldWeapon;
+      const muzzle = w.id === 'shotgun' ? 17 : w.id === 'smg' ? 13 : 9;
+      ctx.save();
+      ctx.translate(faHandX, faHandY);
+      ctx.rotate(p.facing < 0 ? Math.PI : 0);
+      drawWeaponShape(ctx, w.id, w.color);
+      ctx.restore();
+      if (p.weaponFlash > 0) {
+        ctx.save();
+        ctx.translate(faHandX + p.facing*(muzzle+2), faHandY - 3);
+        ctx.fillStyle = `rgba(255,224,140,${p.weaponFlash/6})`;
+        ctx.beginPath(); ctx.arc(0, 0, 4 + p.weaponFlash*0.8, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
     // PUNCH IMPACT MARK (small star at fist on swing)
     if (p.animPunch > 6) {
       ctx.fillStyle = '#fff';
       ctx.save();
       ctx.translate(faHandX, faHandY);
+      ctx.fillRect(-1, -5, 2, 10);
+      ctx.fillRect(-5, -1, 10, 2);
+      ctx.restore();
+    }
+
+    // MOTION LINES — a few trailing strokes behind the striking limb during
+    // a punch/kick, the classic "speed lines" look from stick-fight animation.
+    if (p.animPunch > 2 && p.animPunch < 10) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 * (p.animPunch/10)})`;
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) {
+        const back = 6 + i*4;
+        ctx.beginPath();
+        ctx.moveTo(faHandX - p.facing*back, faHandY - 2 + i*2);
+        ctx.lineTo(faHandX - p.facing*(back+5), faHandY - 2 + i*2);
+        ctx.stroke();
+      }
+    }
+    if (p.animKick > 3 && p.animKick < 14) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 * (p.animKick/14)})`;
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) {
+        const back = 6 + i*4;
+        ctx.beginPath();
+        ctx.moveTo(flFootX - p.facing*back, flFootY - 2 + i*2);
+        ctx.lineTo(flFootX - p.facing*(back+5), flFootY - 2 + i*2);
+        ctx.stroke();
+      }
+    }
+    // KICK IMPACT MARK — mirrors the punch impact mark, at the striking foot.
+    if (p.animKick > 8) {
+      ctx.fillStyle = '#fff';
+      ctx.save();
+      ctx.translate(flFootX, flFootY - 2);
       ctx.fillRect(-1, -5, 2, 10);
       ctx.fillRect(-5, -1, 10, 2);
       ctx.restore();
@@ -3949,6 +4587,32 @@ window.StickFightGame = (function () {
     ctx.restore();
   }
 
+  // Tapered limb — draws a 2-segment (shoulder→elbow→hand / hip→knee→foot)
+  // filled brush-stroke shape instead of a uniform-width line, plus a small
+  // rounded joint at the elbow/knee. This is the single biggest contributor
+  // to the "stick-fight animation" look (thick near the body, tapering out)
+  // versus the old flat-width stroked skeleton.
+  function drawTaperedLimb(ctx, pts, widths, color) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const x1 = pts[i][0], y1 = pts[i][1], x2 = pts[i+1][0], y2 = pts[i+1][1];
+      const w1 = widths[i], w2 = widths[i+1];
+      const dx = x2 - x1, dy = y2 - y1;
+      const len = Math.hypot(dx, dy) || 0.001;
+      const nx = -dy/len, ny = dx/len;
+      ctx.beginPath();
+      ctx.moveTo(x1 + nx*w1/2, y1 + ny*w1/2);
+      ctx.lineTo(x2 + nx*w2/2, y2 + ny*w2/2);
+      ctx.lineTo(x2 - nx*w2/2, y2 - ny*w2/2);
+      ctx.lineTo(x1 - nx*w1/2, y1 - ny*w1/2);
+      ctx.closePath();
+      ctx.fill();
+      if (i > 0) { ctx.beginPath(); ctx.arc(x1, y1, w1/2, 0, Math.PI*2); ctx.fill(); }
+    }
+    // rounded cap at the root joint (shoulder/hip) so the seam into the torso is clean
+    ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], widths[0]/2, 0, Math.PI*2); ctx.fill();
+  }
+
   function drawFoot(ctx, x, y, dir) {
     ctx.save();
     ctx.translate(x, y);
@@ -3959,6 +4623,39 @@ window.StickFightGame = (function () {
     ctx.lineTo(0, 2);
     ctx.closePath(); ctx.fill();
     ctx.restore();
+  }
+
+  // Gun Mayhem weapon silhouettes — each one a distinct recognizable shape
+  // (not just a resized rectangle) so pistol/shotgun/SMG read apart at a
+  // glance both in-hand and sitting on a crate. Drawn facing +x, muzzle
+  // right, at the caller's current ctx transform (translate/rotate/scale
+  // is the caller's job — this only fills + strokes paths at the origin).
+  function drawWeaponShape(ctx, weaponId, color) {
+    ctx.fillStyle = color || '#2a2a30';
+    ctx.strokeStyle = 'rgba(0,0,0,.5)';
+    ctx.lineWidth = 0.6;
+    if (weaponId === 'shotgun') {
+      // long single barrel + pump grip + angled stock
+      ctx.beginPath();
+      ctx.moveTo(-9, -6); ctx.lineTo(-4, 3); ctx.lineTo(-2, 3); ctx.lineTo(-2, -2);
+      ctx.lineTo(17, -2); ctx.lineTo(17, 1); ctx.lineTo(-2, 1); ctx.lineTo(-2, 3);
+      ctx.lineTo(3, 3); ctx.lineTo(3, 6); ctx.lineTo(0, 6); ctx.lineTo(-2, 3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (weaponId === 'smg') {
+      // stubby barrel + boxy magazine hanging down + folded stock
+      ctx.beginPath();
+      ctx.moveTo(-8, -2); ctx.lineTo(-2, -2); ctx.lineTo(-2, -4); ctx.lineTo(13, -4);
+      ctx.lineTo(13, -1); ctx.lineTo(-2, -1); ctx.lineTo(-2, 1); ctx.lineTo(1, 1);
+      ctx.lineTo(1, 7); ctx.lineTo(-2, 7); ctx.lineTo(-2, 1); ctx.lineTo(-8, 1);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else {
+      // pistol: short slide on top, angled grip + trigger guard
+      ctx.beginPath();
+      ctx.moveTo(-6, -3); ctx.lineTo(9, -3); ctx.lineTo(9, 0); ctx.lineTo(-3, 0);
+      ctx.lineTo(-5, 6); ctx.lineTo(-8, 6); ctx.lineTo(-8, 1); ctx.lineTo(-6, -3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(-3, 2, 1.6, 0, Math.PI*2); ctx.stroke();
+    }
   }
 
   // Greedy word-wrap helper for canvas text. Renders at most 3 lines of `text`
@@ -4801,6 +5498,31 @@ window.StickFightGame = (function () {
         }
         ctx.stroke();
         ctx.shadowBlur = 0;
+      } else if (p.kindId === 'mortar') {
+        // Bigger, darker lobbed shell than the cannon's ball.
+        ctx.fillStyle = 'rgba(0,0,0,.35)';
+        ctx.beginPath(); ctx.arc(1, 1, 8, 0, Math.PI*2); ctx.fill();
+        const g = ctx.createRadialGradient(-2, -2, 1, 0, 0, 8.5);
+        g.addColorStop(0, '#8a6a3a'); g.addColorStop(1, '#2a1a0a');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, 7.5, 0, Math.PI*2); ctx.fill();
+      } else if (p.kindId === 'railgun') {
+        // Long bright energy bolt with a cyan core.
+        ctx.strokeStyle = '#7cf6ff';
+        ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.shadowColor = '#7cf6ff'; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(4, 0); ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(4, 0); ctx.stroke();
+        ctx.shadowBlur = 0;
+      } else if (p.kindId === 'cluster') {
+        // Small bomb with a lit fuse spark.
+        ctx.fillStyle = '#2a2a2a';
+        ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, -4.5); ctx.lineTo(2, -7); ctx.stroke();
+        ctx.fillStyle = (Math.random() < 0.5) ? '#ffd76a' : '#ff7a3c';
+        ctx.beginPath(); ctx.arc(2, -7, 1.1, 0, Math.PI*2); ctx.fill();
       } else {
         // Default Archer arrow — pointed forward
         ctx.fillStyle = p.color || '#ffd76a';
@@ -4891,35 +5613,42 @@ window.StickFightGame = (function () {
       ctx.fillText(`3. Click a placed tower to upgrade / sell`, W - 268, 70);
     }
 
-    // Tower picker panel (bottom)
-    const slotW = 95, slotH = 64, baseX = 14, baseY = H - 90;
+    // Tower picker panel (bottom) — wraps into multiple rows of TD_SHOP_COLS
+    // so the roster can grow past a single screen-width row of slots.
+    const TD_SHOP_COLS = 8;
+    const slotW = 95, slotH = 64, baseX = 14, baseY = H - 90, rowGap = 8;
+    const shopRows = Math.max(1, Math.ceil(td.towerKinds.length / TD_SHOP_COLS));
+    const panelBottom = baseY + slotH + 22;
+    const panelTop = baseY - (shopRows - 1) * (slotH + rowGap) - 8;
     ctx.fillStyle = 'rgba(8,4,18,.92)';
-    ctx.fillRect(0, baseY - 8, W, slotH + 30);
+    ctx.fillRect(0, panelTop, W, panelBottom - panelTop);
     for (let i = 0; i < td.towerKinds.length; i++) {
       const k = td.towerKinds[i];
-      const sx = baseX + i * (slotW + 6);
+      const row = Math.floor(i / TD_SHOP_COLS), col = i % TD_SHOP_COLS;
+      const sx = baseX + col * (slotW + 6);
+      const sy = baseY - row * (slotH + rowGap);
       const selected = td.selectedKind === k.id;
       const afford = td.gold >= k.cost;
       ctx.fillStyle = selected ? 'rgba(255,154,60,.35)' : 'rgba(255,255,255,.06)';
-      ctx.fillRect(sx, baseY, slotW, slotH);
+      ctx.fillRect(sx, sy, slotW, slotH);
       ctx.strokeStyle = selected ? '#ff9a3c' : (afford ? 'rgba(255,255,255,.18)' : 'rgba(255,91,91,.5)');
       ctx.lineWidth = selected ? 2.5 : 1.5;
-      ctx.strokeRect(sx, baseY, slotW, slotH);
+      ctx.strokeRect(sx, sy, slotW, slotH);
       // tower icon mini
       ctx.fillStyle = k.color;
-      ctx.beginPath(); ctx.arc(sx + 20, baseY + 28, 12, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx + 20, sy + 28, 12, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = k.turret;
-      ctx.beginPath(); ctx.arc(sx + 20, baseY + 28, 5, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx + 20, sy + 28, 5, 0, Math.PI*2); ctx.fill();
       // name + cost
       ctx.fillStyle = afford ? '#fff' : '#ff8a9a';
       ctx.font = "700 13px 'Bebas Neue'"; ctx.textAlign = 'left';
-      ctx.fillText(k.name.toUpperCase(), sx + 38, baseY + 22);
+      ctx.fillText(k.name.toUpperCase(), sx + 38, sy + 22);
       ctx.fillStyle = afford ? '#ffd76a' : '#ff8a9a';
       ctx.font = "600 12px 'Rajdhani'";
-      ctx.fillText(`${k.cost}g`, sx + 38, baseY + 38);
+      ctx.fillText(`${k.cost}g`, sx + 38, sy + 38);
       ctx.fillStyle = 'rgba(255,255,255,.55)';
       ctx.font = "500 9px 'Rajdhani'";
-      ctx.fillText(k.desc.slice(0, 18), sx + 6, baseY + 56);
+      ctx.fillText(k.desc.slice(0, 18), sx + 6, sy + 56);
     }
     // ===== ENDLESS-MODE PROMPT (after wave 30) =====
     if (td.awaitingEndlessChoice) {
@@ -5031,6 +5760,13 @@ window.StickFightGame = (function () {
         ctx.font = "600 10px 'Rajdhani'";
         ctx.textAlign = 'left';
         ctx.fillText(`+${buffCt} buff${buffCt>1?'s':''}`, x+14, y+53);
+      }
+      // ammo (Gun Mayhem — only while a weapon pickup is held)
+      if (p.heldWeapon) {
+        ctx.font = "700 11px 'Rajdhani'";
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#ffe08a';
+        ctx.fillText(`${p.heldWeapon.name.toUpperCase()} ${p.heldWeapon.ammo}/${p.heldWeapon.total}`, x+slotW-12, y+53);
       }
 
       x += slotW + 14;

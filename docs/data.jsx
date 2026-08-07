@@ -542,6 +542,7 @@ window.GameData = (function () {
     { id:'golf',    name:'Mini Golf',        iconId:'mode_golf',   ready:true, desc:'Top-down golf. Click and drag to swing. Fewest strokes wins.' },
     { id:'td',      name:'Tower Defense',    iconId:'pu_iron',     ready:true, desc:'Top-down tower defense. Place towers, stop the enemy waves.' },
     { id:'coins',   name:'Coin Rush',        iconId:'coin',        ready:true, desc:'Gold coins rain from the sky. Grab them. First to the target wins.' },
+    { id:'guns',    name:'Gun Mayhem',       iconId:'pu_gun',      ready:true, desc:'Guns rain from the sky. Grab one and start blasting.' },
   ];
 
   // ---------- STAGES ----------
