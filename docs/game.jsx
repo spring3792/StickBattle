@@ -1635,6 +1635,10 @@ window.StickFightGame = (function () {
           if (dd < bestD) { bestD = dd; best = { x: d.x, y: d.y + 24 }; }
         }
         target = best;
+      } else if (state.mode === 'parkour' && state.finish) {
+        // Head for the finish flag instead of the other racer — parkour has
+        // no combat, just distance to cover.
+        target = state.finish;
       } else {
         target = nearestEnemy(state, p);
       }
@@ -1650,6 +1654,21 @@ window.StickFightGame = (function () {
           cache.right = moveDx >  30;
           // In coin rush, jump aggressively toward airborne coins.
           if (state.mode === 'coins' && target.y < p.y - 20 && p.onGround) cache.jump = true;
+          else if (state.mode === 'parkour' && p.onGround) {
+            // This is a fixed hand-built course, not a random arena — the bot
+            // needs to actually clear specific gaps/steps, not just hop when
+            // a distant finish flag happens to be above it. Look a short
+            // distance ahead in the facing direction; if nothing solid is
+            // there at a reachable height, there's a pit or a step up, so jump.
+            const lookX = p.x + p.facing * 46;
+            let stepFound = false;
+            for (const plat of state.platforms) {
+              if (lookX >= plat.x && lookX <= plat.x + plat.w && Math.abs(plat.y - p.y) < 130) {
+                stepFound = true; break;
+              }
+            }
+            if (!stepFound) cache.jump = true;
+          }
           else if (target.y < p.y - 40 && p.onGround && Math.random() < cfg.jumpProb) cache.jump = true;
           // Attack decision — skipped in coin rush (no PvP damage) and while
           // chasing a weapon crate (target is a drop location, not a player).

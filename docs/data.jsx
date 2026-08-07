@@ -299,11 +299,7 @@ window.GameData = (function () {
     'GAMEON':    { kind:'coins',  amount: 100,  desc:'Hello there!' },
     'EDUWIN':    { kind:'coins',  amount: 500,  desc:'For the scholars' },
     'CRATEBOY':  { kind:'coins',  amount: 1000, desc:'Treasure chest!' },
-    // ADMIN redemption code removed — anyone who already has admin (their
-    // sf_admin_v1 flag is set) keeps it because isAdmin() reads that
-    // flag directly. RESETADMIN still exists so an admin can voluntarily
-    // step down; without it, admin can also be turned off from the
-    // admin panel's Danger Zone.
+    'ADMIN':     { kind:'admin',  desc:'Unlock admin mode' },
     'RESETADMIN':{ kind:'admin_off', desc:'Turn off admin mode' },
   };
   const LS_REDEEMED = 'sf_redeemed_v1';
