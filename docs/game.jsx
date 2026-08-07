@@ -1015,7 +1015,25 @@ window.StickFightGame = (function () {
         }
         td.cpuBuildCd = (td.cpuBuildCd || 0) - 1;
         if (td.cpuBuildCd <= 0) {
-          tdCpuTryBuild(state);
+          // Was build-only before, which just kept buying an ever-wider
+          // spread of weak level-1 towers and never used abilities.
+          // Priority: free ability cast > upgrading a weak tower it already
+          // owns > building a new one, so gold gets spent effectively.
+          const cpuTowers = td.towers.filter(t2 => t2.cpu);
+          const castable = cpuTowers.filter(t2 => {
+            const k = td.towerKinds.find(k2 => k2.id === t2.kindId);
+            return k && k.ability && (t2.abilityCd || 0) <= 0;
+          });
+          const upgradable = cpuTowers
+            .filter(t2 => t2.level < 3 && (td.cpuGold || 0) >= tdUpgradeCost(t2))
+            .sort((a, b) => a.level - b.level); // weakest first, spreads levels fairly
+          if (castable.length && Math.random() < 0.5) {
+            tdCastAbility(state, castable[Math.floor(Math.random() * castable.length)], true);
+          } else if (upgradable.length && (cpuTowers.length >= 3 || Math.random() < 0.4)) {
+            tdCpuUpgrade(state, upgradable[0]);
+          } else {
+            tdCpuTryBuild(state);
+          }
           // Re-arm. Faster on hard, slower on easy.
           const diff = state.botDifficulty || 'normal';
           td.cpuBuildCd = diff === 'hard'   ? 60 * 5
@@ -2667,7 +2685,7 @@ window.StickFightGame = (function () {
       const px = cx + nx * offset * side;
       const py = cy + ny * offset * side;
       if (px < 40 || px > W - 40 || py < 40 || py > H - 110) continue;
-      if (pointNearPath(td.path, px, py, 40)) continue;
+      if (pointNearPath(td.path, px, py, 60)) continue;
       let collision = false;
       for (const t2 of td.towers) {
         if (Math.hypot(t2.x - px, t2.y - py) < 50) { collision = true; break; }
@@ -2706,7 +2724,7 @@ window.StickFightGame = (function () {
     if (!td) return;
     const kind = td.towerKinds.find(k => k.id === td.selectedKind) || td.towerKinds[0];
     if (td.gold < kind.cost) return;
-    if (pointNearPath(td.path, x, y, 36)) return;       // can't place on path
+    if (pointNearPath(td.path, x, y, 60)) return;       // can't place too close to the path
     if (x < 30 || x > W - 30 || y < 30 || y > H - 30) return; // bounds
     for (const t of td.towers) {
       if (Math.hypot(t.x - x, t.y - y) < 44) return;
@@ -2877,10 +2895,26 @@ window.StickFightGame = (function () {
   function tdUpgrade(state, t) {
     const td = state.td;
     if (!td || !t || t.level >= 3) return;
-    if (t.cpu) return; // CPU-owned tower — player can inspect but not modify.
+    if (t.cpu) return; // CPU-owned tower — player can inspect but not modify (see tdCpuUpgrade).
     const cost = tdUpgradeCost(t);
     if (td.gold < cost) return;
     td.gold -= cost;
+    applyTowerLevelUp(t);
+  }
+  // CPU co-defender's own upgrade path — same level-up effects as tdUpgrade,
+  // just spent from cpuGold and without the "player can't touch CPU towers"
+  // guard (that guard exists to stop the human clicking a CPU tower's
+  // upgrade button, not to stop the CPU improving its own towers).
+  function tdCpuUpgrade(state, t) {
+    const td = state.td;
+    if (!td || !t || !t.cpu || t.level >= 3) return false;
+    const cost = tdUpgradeCost(t);
+    if ((td.cpuGold || 0) < cost) return false;
+    td.cpuGold -= cost;
+    applyTowerLevelUp(t);
+    return true;
+  }
+  function applyTowerLevelUp(t) {
     t.level++;
     // Level 2: scaling upgrade — bigger numbers, no new ability.
     // Level 3: tower-specific PERK that meaningfully changes behavior.
@@ -2976,10 +3010,10 @@ window.StickFightGame = (function () {
   // ===== TD active abilities =====
   // Each kind's ability has its own effect. Called when the player taps the
   // ABILITY button (or the bot auto-casts it). Sets the tower's cooldown.
-  function tdCastAbility(state, t) {
+  function tdCastAbility(state, t, fromCpu) {
     const td = state.td;
     if (!td || !t) return false;
-    if (t.cpu) return false; // CPU-owned — inspect only.
+    if (t.cpu && !fromCpu) return false; // player can't trigger a CPU tower's ability; the CPU itself can.
     const kind = (td.towerKinds || []).find(k => k.id === t.kindId);
     if (!kind || !kind.ability) return false;
     if ((t.abilityCd || 0) > 0) return false;
@@ -5041,21 +5075,22 @@ window.StickFightGame = (function () {
     // fixed-position upgrade/sell panel pinned to the top-right of the canvas.
     if (td.selectedTower) {
       const t = td.selectedTower;
-      // Range circle on the map — centered on the VISUAL stickman (which sits
-      // ~10px above t.y because drawTowerStickman positions the ground tile at
-      // t.y+12 and the head at t.y-26). The targeting code still uses (t.x,t.y)
-      // so the ring shifts cosmetically only.
-      // Ring centred exactly on the tower base point (t.x, t.y) — same anchor
-      // the targeting math uses. No cosmetic offsets.
+      // Range circle — centred exactly on the tower base point (t.x, t.y),
+      // the same anchor the targeting math uses, so the ring always shows
+      // the real attack range with no cosmetic offset.
       ctx.fillStyle = 'rgba(91,255,138,.05)';
       ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#5bff8a'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(t.x, t.y, t.range, 0, Math.PI*2); ctx.stroke();
-      // Pulsing selection ring around the tower itself
+      // Pulsing selection ring — this one is purely cosmetic (doesn't need to
+      // match the targeting anchor), so it's centred on the tower's visible
+      // ground tile (t.y+16, same center drawTowerStickman uses for it)
+      // instead of the raw t.y, which sat ~16px above the sprite and made
+      // the ring look like it was floating off-center above the tower.
       const pulse = (Math.sin(state.frame * 0.18) + 1) * 0.5;
       ctx.strokeStyle = `rgba(91,255,138,${0.6 + pulse * 0.4})`;
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(t.x, t.y, 24 + pulse * 2, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(t.x, t.y + 16, 24 + pulse * 2, 0, Math.PI*2); ctx.stroke();
 
       // ============ FIXED PANEL (top-right of canvas) ============
       const { px, py, PW, PH, upX, upY, upW, upH, abX, abY, abW, abH, slX, slY, slW, slH, cxX, cxY, cxW, cxH } = tdUpgradePanelBtns();
@@ -5225,7 +5260,7 @@ window.StickFightGame = (function () {
         ctx.setLineDash([]);
       } else {
         const ok = td.gold >= selKind.cost &&
-          !pointNearPath(td.path, m.x, m.y, 36) &&
+          !pointNearPath(td.path, m.x, m.y, 60) &&
           td.towers.every(t => Math.hypot(t.x - m.x, t.y - m.y) >= 44);
         ctx.fillStyle = ok ? 'rgba(91,255,138,.12)' : 'rgba(255,91,91,.12)';
         ctx.beginPath(); ctx.arc(m.x, m.y, selKind.range, 0, Math.PI*2); ctx.fill();
