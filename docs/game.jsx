@@ -1941,6 +1941,44 @@ window.StickFightGame = (function () {
             if (!safe) cache.left = false;
           }
         }
+        // Track the platform being launched from so the landing check below
+        // can exclude it — on a WIDE platform (the starting block is 170px)
+        // the bot can still be sitting inside that same 25-85% window for
+        // many frames after takeoff, which stopped it dead before it had
+        // enough distance to actually clear the gap, dropping it short into
+        // the very first pit.
+        if (p.onGround) {
+          p._airFrames = 0; p._takeoffPlat = null;
+        } else {
+          p._airFrames = (p._airFrames || 0) + 1;
+          if (p._airFrames === 1) {
+            for (const plat of state.platforms) {
+              if (p.x > plat.x - 4 && p.x < plat.x + plat.w + 4 && Math.abs(plat.y - p.y) < 20) {
+                p._takeoffPlat = plat; break;
+              }
+            }
+          }
+        }
+        // PARKOUR: the reaction-tick decisions above only run every few
+        // frames (up to every 12 on Easy) and always just say "keep pushing
+        // toward the finish" — nothing ever told the bot to ease off once
+        // it's actually above the platform it's trying to land on, so it
+        // kept holding forward through the whole jump arc and sailed past
+        // narrow platforms into the next gap. This runs every frame
+        // (not gated by the reaction timer) so the correction lands in time.
+        if (state.mode === 'parkour' && !p.onGround && p._airFrames > 6) {
+          const dir = cache.right ? 1 : cache.left ? -1 : 0;
+          if (dir !== 0) {
+            for (const plat of state.platforms) {
+              if (plat === p._takeoffPlat) continue;
+              if (Math.abs(plat.y - p.y) > 140) continue;
+              if (p.x > plat.x + plat.w * 0.25 && p.x < plat.x + plat.w * 0.85) {
+                cache.right = false; cache.left = false;
+                break;
+              }
+            }
+          }
+        }
         input.left = cache.left; input.right = cache.right;
         input.jump = cache.jump; input.punch = cache.punch; input.kick = cache.kick;
       }
