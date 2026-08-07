@@ -641,10 +641,10 @@ window.GameData = (function () {
         { x:80,    y:GY-30, w:260, h:120, solid:true },
         { x:480,   y:480,   w:280, h:80,  solid:true },
         { x:920,   y:GY-30, w:280, h:120, solid:true },
-        { x:540,   y:240,   w:200, h:18,  solid:false },
+        { x:540,   y:350,   w:200, h:18,  solid:false },
       ],
       hazards: [],
-      spawns: [ {x:200,y:GY-30}, {x:1060,y:GY-30}, {x:620,y:480}, {x:640,y:240} ],
+      spawns: [ {x:200,y:GY-30}, {x:1060,y:GY-30}, {x:620,y:480}, {x:640,y:350} ],
     },
     {
       id:'spikepit', name:'Spike Pit',
@@ -678,11 +678,11 @@ window.GameData = (function () {
         { x:200, y:420, w:240, h:18, solid:false },
         { x:840, y:420, w:240, h:18, solid:false },
         { x:520, y:290, w:240, h:18, solid:false },
-        { x:60,  y:250, w:140, h:18, solid:false },
-        { x:1080,y:250, w:140, h:18, solid:false },
+        { x:60,  y:280, w:140, h:18, solid:false },
+        { x:1080,y:280, w:140, h:18, solid:false },
       ],
       hazards: [],   // no ground spike — full floor
-      spawns: [ {x:260,y:GY}, {x:1020,y:GY}, {x:640,y:290}, {x:130,y:250} ],
+      spawns: [ {x:260,y:GY}, {x:1020,y:GY}, {x:640,y:290}, {x:130,y:280} ],
     },
   ];
 

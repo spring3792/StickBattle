@@ -451,6 +451,10 @@ window.StickFightGame = (function () {
           // Wave control: player must press "Start Wave" between waves so they
           // can place/upgrade at their own pace. `waveReady` = waiting for start.
           waveReady: true,
+          // Auto Start — when on, the next wave launches on its own after a
+          // short prep window instead of waiting for a manual click.
+          autoStart: false,
+          autoStartTimer: 0,
           // Game speed (1 or 2) — toggleable via UI button.
           speed: 1,
           // Tower catalog
@@ -1022,6 +1026,19 @@ window.StickFightGame = (function () {
 
       // Game speed — at 2x we run the entire step block again at the end.
       // (Implementation detail: handled by outer caller using td.speed.)
+
+      // Auto Start — counts down while waiting on "Start Wave" and launches
+      // the wave itself once it hits zero, same as a manual click would.
+      if (td.waveReady && td.autoStart && !td.awaitingEndlessChoice) {
+        td.autoStartTimer = (td.autoStartTimer || 0) + 1;
+        if (td.autoStartTimer >= 90) { // 1.5s prep window
+          td.waveReady = false;
+          td.waveTimer = 60 * 3;
+          td.autoStartTimer = 0;
+        }
+      } else if (!td.waveReady) {
+        td.autoStartTimer = 0;
+      }
 
       // Wave / enemy spawning — varied types per wave. The wave only ticks
       // when the player has pressed "Start Wave" (waveReady === false). Until
@@ -2732,7 +2749,9 @@ window.StickFightGame = (function () {
     const sx = (W - sw) / 2 - 30, sy = 14;
     const ssw = 50, ssh = 40;                      // speed toggle
     const ssx = sx + sw + 8, ssy = 14;
-    return { sx, sy, sw, sh, ssx, ssy, ssw, ssh };
+    const asw = 74, ash = 40;                      // auto-start toggle
+    const asx = sx - asw - 8, asy = 14;
+    return { sx, sy, sw, sh, ssx, ssy, ssw, ssh, asx, asy, asw, ash };
   }
   // Endless-prompt button rects (drawn centred when td.awaitingEndlessChoice).
   function tdEndlessPromptRects() {
@@ -2768,7 +2787,14 @@ window.StickFightGame = (function () {
       }
       return true; // consume any other click while prompt is up
     }
-    const { sx, sy, sw, sh, ssx, ssy, ssw, ssh } = tdControlsRect();
+    const { sx, sy, sw, sh, ssx, ssy, ssw, ssh, asx, asy, asw, ash } = tdControlsRect();
+    // Auto Start toggle
+    if (x >= asx && x < asx + asw && y >= asy && y < asy + ash) {
+      td.autoStart = !td.autoStart;
+      td.autoStartTimer = 0;
+      spawnToast(state, td.autoStart ? 'AUTO START ON' : 'AUTO START OFF', '#5bff8a');
+      return true;
+    }
     // Speed toggle
     if (x >= ssx && x < ssx + ssw && y >= ssy && y < ssy + ssh) {
       td.speed = (td.speed || 1) === 1 ? 2 : 1;
@@ -2778,10 +2804,11 @@ window.StickFightGame = (function () {
     if (td.waveReady && x >= sx && x < sx + sw && y >= sy && y < sy + sh) {
       td.waveReady = false;
       td.waveTimer = 60 * 3; // 3s lead-in so the player can position for the wave
+      td.autoStartTimer = 0;
       return true;
     }
     // Click inside the controls strip but not on a button → consume
-    if (x >= sx && x < ssx + ssw && y >= sy && y < sy + sh) return true;
+    if (x >= asx && x < ssx + ssw && y >= sy && y < sy + sh) return true;
     return false;
   }
 
@@ -4658,6 +4685,20 @@ window.StickFightGame = (function () {
     }
   }
 
+  // Draws `text` on one line, shrinking the font (down to minSize) until it
+  // fits maxWidth. Longer labels (e.g. "CLUSTER BOMBER" in a fixed-width
+  // shop slot) shrink instead of spilling into neighboring UI.
+  function fillTextFit(ctx, text, x, y, maxWidth, maxSize, family, weight, minSize) {
+    minSize = minSize || 8;
+    let size = maxSize;
+    ctx.font = `${weight} ${size}px '${family}'`;
+    while (size > minSize && ctx.measureText(text).width > maxWidth) {
+      size--;
+      ctx.font = `${weight} ${size}px '${family}'`;
+    }
+    ctx.fillText(text, x, y);
+  }
+
   // Greedy word-wrap helper for canvas text. Renders at most 3 lines of `text`
   // starting at (x,y), wrapping at width w, line height lh. Returns the next y.
   function wrapText(ctx, text, x, y, w, lh) {
@@ -5568,7 +5609,18 @@ window.StickFightGame = (function () {
     }
 
     // ============ START WAVE + SPEED CONTROLS (top-center) ============
-    const { sx:swX, sy:swY, sw:swW, sh:swH, ssx:spX, ssy:spY, ssw:spW, ssh:spH } = tdControlsRect();
+    const { sx:swX, sy:swY, sw:swW, sh:swH, ssx:spX, ssy:spY, ssw:spW, ssh:spH, asx:atX, asy:atY, asw:atW, ash:atH } = tdControlsRect();
+    // Auto Start toggle — sits left of the Start Wave button.
+    ctx.fillStyle = td.autoStart ? '#5cf6ff' : 'rgba(8,4,18,.7)';
+    ctx.fillRect(atX, atY, atW, atH);
+    ctx.strokeStyle = td.autoStart ? '#a5f3ff' : 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(atX, atY, atW, atH);
+    ctx.fillStyle = td.autoStart ? '#0a2a3a' : '#fff';
+    ctx.font = "700 13px 'Bebas Neue'"; ctx.textAlign = 'center';
+    ctx.fillText('AUTO', atX + atW/2, atY + 17);
+    ctx.font = "600 10px 'Rajdhani'";
+    ctx.fillText(td.autoStart ? 'ON' : 'OFF', atX + atW/2, atY + 31);
     // Start Wave button — only shown while waiting to start the next wave.
     if (td.waveReady) {
       const pulse = (Math.sin(state.frame * 0.18) + 1) * 0.5;
@@ -5578,7 +5630,12 @@ window.StickFightGame = (function () {
       ctx.strokeRect(swX, swY, swW, swH);
       ctx.fillStyle = '#0a2614';
       ctx.font = "700 18px 'Bebas Neue'"; ctx.textAlign = 'center';
-      ctx.fillText(`▶ START WAVE ${td.waveNum}`, swX + swW/2, swY + 26);
+      if (td.autoStart) {
+        const secLeft = Math.max(0, Math.ceil((90 - (td.autoStartTimer || 0)) / 60));
+        ctx.fillText(`▶ AUTO-STARTING IN ${secLeft}s`, swX + swW/2, swY + 26);
+      } else {
+        ctx.fillText(`▶ START WAVE ${td.waveNum}`, swX + swW/2, swY + 26);
+      }
     } else {
       // Subtle status panel — wave is running.
       ctx.fillStyle = 'rgba(8,4,18,.5)';
@@ -5639,16 +5696,21 @@ window.StickFightGame = (function () {
       ctx.beginPath(); ctx.arc(sx + 20, sy + 28, 12, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = k.turret;
       ctx.beginPath(); ctx.arc(sx + 20, sy + 28, 5, 0, Math.PI*2); ctx.fill();
-      // name + cost
+      // name + cost — name shrinks to fit so longer tower names (Cluster
+      // Bomber, Flamethrower, Multi-Turret) never spill out of the slot.
       ctx.fillStyle = afford ? '#fff' : '#ff8a9a';
-      ctx.font = "700 13px 'Bebas Neue'"; ctx.textAlign = 'left';
-      ctx.fillText(k.name.toUpperCase(), sx + 38, sy + 22);
+      ctx.textAlign = 'left';
+      fillTextFit(ctx, k.name.toUpperCase(), sx + 38, sy + 22, slotW - 40, 13, 'Bebas Neue', 700, 8);
       ctx.fillStyle = afford ? '#ffd76a' : '#ff8a9a';
       ctx.font = "600 12px 'Rajdhani'";
       ctx.fillText(`${k.cost}g`, sx + 38, sy + 38);
       ctx.fillStyle = 'rgba(255,255,255,.55)';
       ctx.font = "500 9px 'Rajdhani'";
-      ctx.fillText(k.desc.slice(0, 18), sx + 6, sy + 56);
+      let descText = k.desc.slice(0, 22);
+      while (descText.length > 4 && ctx.measureText(descText).width > slotW - 12) {
+        descText = descText.slice(0, -1);
+      }
+      ctx.fillText(descText, sx + 6, sy + 56);
     }
     // ===== ENDLESS-MODE PROMPT (after wave 30) =====
     if (td.awaitingEndlessChoice) {
