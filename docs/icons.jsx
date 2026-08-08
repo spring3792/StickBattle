@@ -62,17 +62,6 @@ window.SFIcons = (function () {
       circ(6,21,2,{fill:'currentColor',stroke:'none'}),
       ln(3,22.5,9,22.5)
     ),
-    mode_parkour:p => svg(p,
-      // running stick figure leaning forward
-      circ(14,5,2),
-      ln(14,7,11,13),                 // torso
-      ln(13,10,18,12),                // forward arm
-      ln(13,10,8,7),                  // back arm
-      ln(11,13,15,19),                // forward leg
-      ln(11,13,6,17),                 // back leg
-      // motion lines
-      ln(2,7,5,7), ln(2,10,4,10), ln(2,13,5,13)
-    ),
     // Sumo: one broad-bodied wrestler in a wide stance (was two abstract
     // circles before — a single bold figure reads clearer at small sizes).
     mode_sumo:   p => svg(p,

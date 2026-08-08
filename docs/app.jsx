@@ -2977,7 +2977,7 @@
   function MatchResults({ profiles, winner, mode, onPlayAgain, onMenu, onNext, queueCount = 0 }) {
     // Solo modes that aren't a points race — only show the human player and a
     // mode-appropriate summary instead of "first to N points".
-    const SOLO = ['td', 'golf', 'parkour', 'last'];
+    const SOLO = ['td', 'golf', 'last'];
     const isSolo = SOLO.includes(mode);
     const human = profiles.find(p => !p.isBot) || winner;
     const humanWon = winner && human && winner._slot === human._slot;
@@ -3000,13 +3000,6 @@
           sub: `${kills} ${kills === 1 ? 'kill' : 'kills'} before going down`,
           statLabel: 'Kills',
           statValue: kills,
-        };
-      }
-      if (mode === 'parkour') {
-        return {
-          headline: humanWon ? 'YOU WIN' : 'YOU LOST',
-          sub: humanWon ? 'First to the finish!' : 'Better luck next run',
-          statLabel: null, statValue: null,
         };
       }
       if (mode === 'golf') {
@@ -3641,7 +3634,7 @@
     }
     // Random mode + map. Used by Quick Match and the "+ Random" queue button.
     function randomMatchItem() {
-      const modes = ['fight','sumo','koth','bomb','last','parkour','golf','td','coins'];
+      const modes = ['fight','sumo','koth','bomb','last','golf','td','coins'];
       const m = modes[Math.floor(Math.random() * modes.length)];
       const item = { mode: m };
       if (m === 'td') {
@@ -4899,7 +4892,6 @@
       { id:'koth',    label:'King of the Hill' },
       { id:'bomb',    label:'Bomb Tag' },
       { id:'last',    label:'Last Stand' },
-      { id:'parkour', label:'Parkour Race' },
       { id:'golf',    label:'Mini Golf' },
       { id:'td',      label:'Tower Defense' },
       { id:'coins',   label:'Coin Rush' },
@@ -4914,7 +4906,6 @@
       koth:    { hue: '#a07bff', tag: 'CONTROL' },
       bomb:    { hue: '#ff9a3c', tag: 'TAG' },
       last:    { hue: '#7c5cff', tag: 'SURVIVE' },
-      parkour: { hue: '#5cf6ff', tag: 'RACE' },
       golf:    { hue: '#5bff8a', tag: 'STROKES' },
       td:      { hue: '#ff7a3c', tag: 'DEFEND' },
     };

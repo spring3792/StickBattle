@@ -260,9 +260,9 @@ window.StickFightGame = (function () {
       alive:true, dead:false, deadTimer:0,
       ragdoll:null,
       score: profile.score || 0,
-      // Passed through from the profile so per-mode target checks (parkour,
-      // coin rush, KOTH, last stand) actually respect settings.target instead
-      // of silently falling back to the hardcoded 5.
+      // Passed through from the profile so per-mode target checks (coin rush,
+      // KOTH, last stand) actually respect settings.target instead of
+      // silently falling back to the hardcoded 5.
       _target: profile._target || 5,
     };
   }
@@ -298,7 +298,7 @@ window.StickFightGame = (function () {
         bomb: null,       // bomb tag
         ball: null,       // mini golf
         td: null,         // tower defense
-        finish: null,     // parkour race
+        finish: null,     // mini golf goal
         wave: null,       // last stand / TD
       };
 
@@ -320,53 +320,6 @@ window.StickFightGame = (function () {
         const first = state.players[Math.floor(Math.random() * state.players.length)];
         // cooldown prevents frame-1 instant transfer to a nearby spawn.
         state.bomb = { carrierSlot: first.slot, timer: 60 * 6 /* 6 seconds */ , flashIntense:false, cooldown: 45 };
-      }
-
-      // ----- PARKOUR RACE: challenging but fair. Bigger platforms,
-      // lava only in the pits between them, one sawblade as a focal
-      // hazard rather than a wall of them. -----
-      if (state.mode === 'parkour') {
-        const G = GROUND_Y;
-        state.platforms = [
-          // Starting platform (LEFT)
-          { x: 0,    y: G, w: 170, h: 100, solid:true },
-          // ===== STAGE 1: STEPPING TILES =====
-          { x: 220,  y: G - 60,  w: 80, h: 16, solid:false },
-          { x: 340,  y: G - 120, w: 70, h: 16, solid:false },
-          { x: 460,  y: G - 80,  w: 70, h: 16, solid:false },
-          // ===== STAGE 2: VERTICAL CLIMB (3 steps, comfortable widths) =====
-          { x: 570,  y: G - 160, w: 70, h: 16, solid:false },
-          { x: 510,  y: G - 240, w: 60, h: 14, solid:false },
-          { x: 600,  y: G - 320, w: 60, h: 14, solid:false },
-          // ===== STAGE 3: HIGH BRIDGE — one sawblade in the middle =====
-          { x: 690,  y: G - 320, w: 230, h: 14, solid:false },
-          // ===== STAGE 4: DROP DOWN TO FINISH =====
-          { x: 980,  y: G - 240, w: 70, h: 14, solid:false },
-          { x: 1080, y: G - 160, w: 60, h: 14, solid:false },
-          // Finish platform (RIGHT)
-          { x: 1150, y: G, w: 130, h: 100, solid:true },
-        ];
-        // Hazards: lava ONLY in the pits between platforms (not a single
-        // continuous strip), plus one well-telegraphed sawblade on the bridge.
-        state.hazards = [
-          // Lava pits sit just below ground level, in the gaps only
-          { x: 170, y: G + 40, w: 50,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 300, y: G + 40, w: 40,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 410, y: G + 40, w: 50,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 530, y: G + 40, w: 40,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 660, y: G + 40, w: 30,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 920, y: G + 40, w: 60,  h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 1050, y: G + 40, w: 30, h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          { x: 1140, y: G + 40, w: 10, h: 60, type:'lava', dmg: 999, cooldown: 6 },
-          // One sawblade dead center on the bridge — easy to spot, hard to time
-          { x: 790,  y: G - 340, w: 36, h: 36, type:'sawblade', dmg: 999, cooldown: 6 },
-        ];
-        for (let i = 0; i < state.players.length; i++) {
-          state.players[i].x = 60 + i * 22;
-          state.players[i].y = G - 4;
-          state.players[i].vx = 0; state.players[i].vy = 0;
-        }
-        state.finish = { x: 1200, y: G - 90, w: 60, h: 90 };
       }
 
       // ----- LAST STAND: bots respawn endlessly, count kills -----
@@ -875,37 +828,6 @@ window.StickFightGame = (function () {
           }
         }
         if (picked) state.weaponDrops.splice(i, 1);
-      }
-    }
-
-    // ---- PARKOUR RACE ----
-    if (state.mode === 'parkour' && state.winner === null && state.finish) {
-      const f = state.finish;
-      // Respawn anyone who fell into lava back at the start
-      for (const p of state.players) {
-        if (!p.alive) {
-          p.alive = true; p.hp = p.maxHp; p.ragdoll = null;
-          p.x = 80; p.y = GROUND_Y - 4;
-          p.vx = 0; p.vy = 0; p.phaseLeft = 20;
-        }
-        if (p.x > f.x && p.x < f.x + f.w && p.y > f.y && p.y < f.y + f.h) {
-          p.score++;
-          spawnStarBurst(state, p.x, p.y - 30, '#ffd76a');
-          const target = p._target || 5;
-          if (p.score >= target) {
-            state.winner = p.slot;
-            state.endTimer = 130;
-          } else {
-            // Reset everyone to the start platform for next leg
-            for (let i = 0; i < state.players.length; i++) {
-              const q = state.players[i];
-              q.x = 80 + i * 28; q.y = GROUND_Y - 4;
-              q.vx = 0; q.vy = 0;
-              q.alive = true; q.hp = q.maxHp; q.ragdoll = null;
-              q.phaseLeft = 30;
-            }
-          }
-        }
       }
     }
 
@@ -1570,7 +1492,7 @@ window.StickFightGame = (function () {
       // Coin rush has its own "first to N coins" end condition; leaving it
       // out here means a stray hazard death ends the round with an arbitrary
       // winner (or nobody).
-      const skip = ['koth','bomb','last','parkour','golf','td','coins'].includes(state.mode);
+      const skip = ['koth','bomb','last','golf','td','coins'].includes(state.mode);
       if (!skip) {
         const alive = state.players.filter(p => p.alive);
         if (alive.length <= 1 && state.players.length > 1) {
@@ -1635,10 +1557,6 @@ window.StickFightGame = (function () {
           if (dd < bestD) { bestD = dd; best = { x: d.x, y: d.y + 24 }; }
         }
         target = best;
-      } else if (state.mode === 'parkour' && state.finish) {
-        // Head for the finish flag instead of the other racer — parkour has
-        // no combat, just distance to cover.
-        target = state.finish;
       } else {
         target = nearestEnemy(state, p);
       }
@@ -1654,37 +1572,6 @@ window.StickFightGame = (function () {
           cache.right = moveDx >  30;
           // In coin rush, jump aggressively toward airborne coins.
           if (state.mode === 'coins' && target.y < p.y - 20 && p.onGround) cache.jump = true;
-          else if (state.mode === 'parkour' && p.onGround) {
-            // This is a fixed hand-built course, not a random arena — the bot
-            // needs to actually clear specific gaps/steps, not just hop when
-            // a distant finish flag happens to be above it. Look a short
-            // distance ahead in the facing direction; if nothing solid is
-            // there at a reachable height, there's a pit or a step up, so jump.
-            const lookX = p.x + p.facing * 46;
-            let stepFound = false;
-            for (const plat of state.platforms) {
-              if (lookX >= plat.x && lookX <= plat.x + plat.w && Math.abs(plat.y - p.y) < 130) {
-                stepFound = true; break;
-              }
-            }
-            if (!stepFound) cache.jump = true;
-            // The bridge hazard (sawblade) sits ON a continuous platform, so
-            // the gap check above never trips for it — the bot would just
-            // keep walking straight into it, dying at the same spot every
-            // respawn. Jump early enough (~90px out) that it's already well
-            // airborne by the time it reaches the blade's x range, clearing
-            // the ~20px of headroom between the bridge and the blade's belly.
-            if (!cache.jump && state.hazards) {
-              for (const hz of state.hazards) {
-                if (hz.type !== 'sawblade' && hz.type !== 'instakill' && hz.type !== 'spike') continue;
-                const aheadX = p.x + p.facing * 90;
-                if (aheadX >= hz.x - 10 && aheadX <= hz.x + hz.w + 10 && Math.abs(hz.y - p.y) < 150) {
-                  cache.jump = true;
-                  break;
-                }
-              }
-            }
-          }
           else if (target.y < p.y - 40 && p.onGround && Math.random() < cfg.jumpProb) cache.jump = true;
           // Attack decision — skipped in coin rush (no PvP damage) and while
           // chasing a weapon crate (target is a drop location, not a player).
@@ -1740,29 +1627,6 @@ window.StickFightGame = (function () {
                 }
               }
               // else: both on hill → use existing combat logic
-            }
-          } else if (state.mode === 'parkour' && state.finish) {
-            // Race to the finish flag — ignore the player target entirely.
-            const fx = state.finish.x + state.finish.w / 2;
-            const dx = fx - p.x;
-            cache.left  = dx < -20;
-            cache.right = dx >  20;
-            cache.punch = false; cache.kick = false;
-            // Aggressively jump to clear gaps + reach higher platforms
-            if (p.onGround) {
-              // Look 60 px ahead — if no platform, jump
-              let groundAhead = false;
-              for (const plat of (state.platforms || [])) {
-                if (p.x + 60 > plat.x && p.x + 60 < plat.x + plat.w &&
-                    plat.y >= p.y - 4 && plat.y < LAVA_Y - 40) { groundAhead = true; break; }
-              }
-              // Also jump if there's a higher platform within reach
-              let needsClimb = false;
-              for (const plat of (state.platforms || [])) {
-                if (plat.x < p.x + 80 && plat.x + plat.w > p.x - 20 &&
-                    plat.y < p.y - 20 && plat.y > p.y - 130) { needsClimb = true; break; }
-              }
-              if (!groundAhead || needsClimb) cache.jump = true;
             }
           } else if (state.mode === 'sumo') {
             // Sumo: emphasize knockoff. Stand closer to push off, and avoid
@@ -1939,44 +1803,6 @@ window.StickFightGame = (function () {
                   plat.y >= p.y - 4 && plat.y < LAVA_Y - 40) { safe = true; break; }
             }
             if (!safe) cache.left = false;
-          }
-        }
-        // Track the platform being launched from so the landing check below
-        // can exclude it — on a WIDE platform (the starting block is 170px)
-        // the bot can still be sitting inside that same 25-85% window for
-        // many frames after takeoff, which stopped it dead before it had
-        // enough distance to actually clear the gap, dropping it short into
-        // the very first pit.
-        if (p.onGround) {
-          p._airFrames = 0; p._takeoffPlat = null;
-        } else {
-          p._airFrames = (p._airFrames || 0) + 1;
-          if (p._airFrames === 1) {
-            for (const plat of state.platforms) {
-              if (p.x > plat.x - 4 && p.x < plat.x + plat.w + 4 && Math.abs(plat.y - p.y) < 20) {
-                p._takeoffPlat = plat; break;
-              }
-            }
-          }
-        }
-        // PARKOUR: the reaction-tick decisions above only run every few
-        // frames (up to every 12 on Easy) and always just say "keep pushing
-        // toward the finish" — nothing ever told the bot to ease off once
-        // it's actually above the platform it's trying to land on, so it
-        // kept holding forward through the whole jump arc and sailed past
-        // narrow platforms into the next gap. This runs every frame
-        // (not gated by the reaction timer) so the correction lands in time.
-        if (state.mode === 'parkour' && !p.onGround && p._airFrames > 6) {
-          const dir = cache.right ? 1 : cache.left ? -1 : 0;
-          if (dir !== 0) {
-            for (const plat of state.platforms) {
-              if (plat === p._takeoffPlat) continue;
-              if (Math.abs(plat.y - p.y) > 140) continue;
-              if (p.x > plat.x + plat.w * 0.25 && p.x < plat.x + plat.w * 0.85) {
-                cache.right = false; cache.left = false;
-                break;
-              }
-            }
           }
         }
         input.left = cache.left; input.right = cache.right;
@@ -2208,7 +2034,7 @@ window.StickFightGame = (function () {
       state.hitstop = isKick ? 3 : 2;
       spawnStarBurst(state, (t.x+attacker.x)/2, (t.y+attacker.y)/2 - 18, '#fff');
       // Don't show damage numbers in modes that don't track damage (sumo / no-damage).
-      if (state.mode !== 'sumo' && state.mode !== 'parkour' && state.mode !== 'golf' && state.mode !== 'td') {
+      if (state.mode !== 'sumo' && state.mode !== 'golf' && state.mode !== 'td') {
         spawnPopup(state, t.x, t.y - 40, Math.round(finalDmg), isCrit ? '#ffd84a' : '#ff8a3d', isCrit);
       }
       if (isKick) SFX.kick(); else SFX.punch();
@@ -2216,8 +2042,8 @@ window.StickFightGame = (function () {
   }
 
   function damagePlayer(state, p, dmg, kbx, kby, byIdx) {
-    // No-damage modes: parkour/golf/td silently ignore damage from other players
-    if (state.mode === 'parkour' || state.mode === 'golf' || state.mode === 'td' || state.mode === 'coins') {
+    // No-damage modes: golf/td silently ignore damage from other players
+    if (state.mode === 'golf' || state.mode === 'td' || state.mode === 'coins') {
       // Allow lava/saw hazards via byIdx === null still (handled elsewhere).
       // Player-to-player damage: ignore.
       if (byIdx !== null && byIdx !== undefined) return;
@@ -3462,7 +3288,7 @@ window.StickFightGame = (function () {
     // hazards (draw on top of platforms, beneath everything else)
     drawHazards(ctx, state);
 
-    // Mode-specific overlays (parkour flag, golf ball + goal, td enemies + base)
+    // Mode-specific overlays (golf ball + goal, td enemies + base)
     // ----- COIN RUSH: render falling gold coins -----
     if (state.mode === 'coins' && state.coinDrops) {
       for (const c of state.coinDrops) {
@@ -3509,29 +3335,6 @@ window.StickFightGame = (function () {
         ctx.fillText(def.name.toUpperCase(), 0, 15);
         ctx.restore();
       }
-    }
-    if (state.mode === 'parkour' && state.finish) {
-      const f = state.finish;
-      // Flag pole
-      ctx.fillStyle = '#cfd6e8';
-      ctx.fillRect(f.x + f.w/2 - 2, f.y, 4, f.h);
-      // Checkered flag
-      const wave = (Math.sin(state.frame * 0.12) + 1) * 0.5;
-      const fx = f.x + f.w/2 + 2;
-      const fy = f.y;
-      const fw = 36 + wave * 4, fh = 26;
-      for (let yy = 0; yy < 4; yy++) {
-        for (let xx = 0; xx < 6; xx++) {
-          ctx.fillStyle = ((xx + yy) & 1) ? '#fff' : '#1a1a22';
-          ctx.fillRect(fx + xx * fw/6, fy + yy * fh/4, fw/6, fh/4);
-        }
-      }
-      ctx.strokeStyle = '#0a0e18'; ctx.lineWidth = 1;
-      ctx.strokeRect(fx, fy, fw, fh);
-      // FINISH label
-      ctx.fillStyle = '#5bff8a';
-      ctx.font = "700 11px 'Bebas Neue'"; ctx.textAlign = 'center';
-      ctx.fillText('FINISH', f.x + f.w/2 + 14, fy - 4);
     }
     if (state.mode === 'golf' && state.finish) {
       const f = state.finish;
