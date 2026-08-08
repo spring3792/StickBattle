@@ -1168,12 +1168,17 @@ window.StickFightGame = (function () {
         }
         // BEACON: no attack of its own — aura already resolved in the pass above.
         if (t.kindId === 'beacon') continue;
-        // TAR PIT: no attack — continuously bogs down every enemy in range.
+        // TAR PIT: no attack — continuously bogs down AND corrodes every
+        // enemy standing in range. The corrosion DoT is what separates it
+        // from Frost (a pure slow-on-hit tower) instead of being a second
+        // copy of the same "slows enemies" gimmick.
         if (t.kindId === 'tarpit') {
           for (const e of td.enemies) {
             if (Math.hypot(e.x - t.x, e.y - t.y) <= t.range) {
               e.slowFor = Math.max(e.slowFor || 0, 20);
-              e.slowFactor = Math.min(e.slowFactor ?? 1, (t.slow && t.slow.factor) || 0.5);
+              e.slowFactor = Math.min(e.slowFactor ?? 1, (t.slow && t.slow.factor) || 0.65);
+              e.corrodeFor = Math.max(e.corrodeFor || 0, 20);
+              e.corrodeDps = Math.max(e.corrodeDps || 0, t.level >= 3 ? 9 : t.level === 2 ? 6 : 3);
             }
           }
           continue;
@@ -1296,10 +1301,12 @@ window.StickFightGame = (function () {
             const offsetAng = shots > 1 ? ((s - (shots - 1) / 2) * 0.25) : 0;
             td.proj.push({
               x: t.x, y: t.y,
+              srcX: t.x, srcY: t.y,
               target, dmg: t.dmg * chargedMult * (t._auraMul || 1),
               splash: t.splash || 0,
               slow: t.slow || null,
               pierce: !!t.pierce || chargedPierce,
+              pierceWidth: t.kindId === 'railgun' ? (t.pierceWidth || 22) : 0,
               crit: !!t.crit || !!t._chargedShot,
               freezeChance: t.freezeChance || 0,
               lifesteal: !!t.lifesteal,
@@ -1324,6 +1331,17 @@ window.StickFightGame = (function () {
           if (state.frame % 6 === 0) {
             e.hp -= e.poisonDps / 10;
             spawnParticles(state, e.x, e.y, '#7bff5a', 1, 0.4);
+          }
+        }
+      }
+      // Tar Pit corrosion tick — kept separate from poison so plague-spread
+      // logic doesn't fire off tar damage.
+      for (const e of td.enemies) {
+        if (e.corrodeFor > 0) {
+          e.corrodeFor--;
+          if (state.frame % 6 === 0) {
+            e.hp -= e.corrodeDps / 10;
+            spawnParticles(state, e.x, e.y, '#8a7a3a', 1, 0.4);
           }
         }
       }
@@ -1379,6 +1397,28 @@ window.StickFightGame = (function () {
             const heal = finalDmg * 0.12 * (p.lifestealMul || 1);
             td.baseHp = Math.min(td.baseHpMax || td.baseHp, td.baseHp + heal);
             spawnPopup(state, p.target.x, p.target.y - 32, `+${heal.toFixed(0)}hp`, '#ff2e6a');
+          }
+          // RAILGUN: the rail shot punches through — anything else standing
+          // in the firing line (tower → target, and beyond) also takes a
+          // share of the hit. This is what makes it a different tool than
+          // Sniper's single colossal hit instead of just a pricier copy.
+          if (p.kindId === 'railgun' && p.pierceWidth > 0 && p.srcX !== undefined) {
+            const lx = p.target.x - p.srcX, ly = p.target.y - p.srcY;
+            const lineLen = Math.hypot(lx, ly) || 1;
+            const ux = lx / lineLen, uy = ly / lineLen;
+            for (const e of td.enemies) {
+              if (e === p.target) continue;
+              const ex = e.x - p.srcX, ey = e.y - p.srcY;
+              const proj = ex * ux + ey * uy;
+              if (proj < 0) continue; // behind the tower
+              const perp = Math.abs(ex * uy - ey * ux);
+              if (perp <= p.pierceWidth) {
+                const railDmg = finalDmg * 0.65;
+                e.hp -= railDmg;
+                spawnPopup(state, e.x, e.y - 18, Math.round(railDmg), '#7cf6ff');
+              }
+            }
+            spawnParticles(state, p.x, p.y, '#7cf6ff', 4, 1);
           }
           // splash
           if (p.splash > 0) {
@@ -2303,10 +2343,10 @@ window.StickFightGame = (function () {
       ability:{ id:'saturation', name:'SATURATION', desc:'6 huge shells rain across the path.', cooldownSec:26 },
     },
     { id:'railgun', name:'Railgun', cost:260, range:340, atkCd:85, dmg:55, color:'#1a1a2a', turret:'#7cf6ff',
-      desc:'Glass cannon — colossal single-target damage, brutally slow, huge range.',
+      desc:'Every shot punches clean through — hits everything standing in the firing line, not just the lock-on target.',
       upgrades:[
         '+60% damage, +15% range, +15% fire rate',
-        'Overcharged Coils: every shot pierces + crits',
+        'Overcharged Coils: wider piercing beam + every shot crits',
       ],
       ability:{ id:'piercinground', name:'PIERCING ROUND', desc:'Next shot deals 6× damage and always crits.', cooldownSec:20 },
     },
@@ -2343,12 +2383,12 @@ window.StickFightGame = (function () {
       ability:{ id:'surge', name:'SURGE', desc:'Doubles the aura boost for 6 seconds.', cooldownSec:28 },
     },
     { id:'tarpit',  name:'Tar Pit', cost:90,  range:110, atkCd:0, dmg:0, color:'#1a1a14', turret:'#8a7a3a',
-      desc:'Support — no attack. Bogs down every enemy standing in range.',
+      desc:'Support — no attack. Bogs down AND corrodes every enemy standing in range over time.',
       upgrades:[
-        'Stronger slow, +15% range',
-        'Quagmire: enemies in range nearly grind to a halt',
+        'Stronger corrosion + slow, +15% range',
+        'Toxic Bog: corrosion damage triples, bog thickens further',
       ],
-      ability:{ id:'quicksand', name:'QUICKSAND', desc:'Every enemy on the map is bogged down for 3 seconds.', cooldownSec:30 },
+      ability:{ id:'quicksand', name:'TAR SURGE', desc:'Every enemy on the map is bogged down and corroding for 3 seconds.', cooldownSec:30 },
     },
     { id:'multi',   name:'Multi-Turret', cost:190, range:135, atkCd:22, dmg:9, color:'#2a3a2a', turret:'#5aff9a',
       desc:'Fires at 3 different enemies at once instead of focusing one target.',
@@ -2365,7 +2405,7 @@ window.StickFightGame = (function () {
   const TD_SPLASH_BASE = { cannon:50, mortar:65, cluster:45 };
   const TD_SLOW_BASE = {
     frost:  { factor:0.55, durSec:2 },
-    tarpit: { factor:0.5,  durSec:0.6 },
+    tarpit: { factor:0.65, durSec:0.6 },
   };
   // ---------- TD path layouts ----------
   // Each layout returns a list of waypoints from the left edge (entry) to
@@ -2917,6 +2957,7 @@ window.StickFightGame = (function () {
           break;
         case 'railgun':
           t.pierce = true;
+          t.pierceWidth = 40;                      // Overcharged Coils: wider piercing corridor
           t.crit = true;                           // every shot always crits
           t.dmg = Math.round(t.dmg * 1.3);
           break;
@@ -2937,7 +2978,7 @@ window.StickFightGame = (function () {
           t.range = Math.round(t.range * 1.3);
           break;
         case 'tarpit':
-          t.slow.factor = 0.15;                     // Quagmire: near-full stop
+          t.slow.factor = Math.max(0.35, t.slow.factor - 0.15); // Toxic Bog: thicker + corrodes harder (see corrodeDps level check)
           t.range = Math.round(t.range * 1.15);
           break;
         case 'multi':
@@ -3149,9 +3190,11 @@ window.StickFightGame = (function () {
         for (const e of td.enemies) {
           e.slowFor = Math.max(e.slowFor || 0, 180);
           e.slowFactor = Math.min(e.slowFactor ?? 1, 0.2);
+          e.corrodeFor = Math.max(e.corrodeFor || 0, 180);
+          e.corrodeDps = Math.max(e.corrodeDps || 0, t.level >= 3 ? 9 : t.level === 2 ? 6 : 3);
         }
         spawnStarBurst(state, t.x, t.y, '#8a7a3a');
-        spawnPopup(state, t.x, t.y - 30, 'QUICKSAND!', '#8a7a3a');
+        spawnPopup(state, t.x, t.y - 30, 'TAR SURGE!', '#8a7a3a');
         break;
       }
       case 'multivolley': {
@@ -5205,7 +5248,7 @@ window.StickFightGame = (function () {
     // Enemies drawn as side-profile stickmen that face their direction of
     // travel and stride properly along the path.
     for (const e of td.enemies) {
-      const tinted = e.slowFor > 0 ? '#a5f3ff' : (e.poisonFor > 0 ? '#7bff5a' : e.color);
+      const tinted = e.slowFor > 0 ? '#a5f3ff' : (e.poisonFor > 0 ? '#7bff5a' : (e.corrodeFor > 0 ? '#8a7a3a' : e.color));
       const dark = '#0a0a14';
       const s = e.isMilestoneBoss ? 2.3 : e.type === 'fast' ? 0.9 : e.type === 'armor' ? 1.15 : e.type === 'boss' ? 1.6 : 1.0;
       // Facing direction from movement vector. Default to +x if not moving.
@@ -5230,7 +5273,7 @@ window.StickFightGame = (function () {
       // The arms anchor at the SHOULDER edges (sides of torso, not the center)
       // so they emerge from the silhouette of the body — not from inside it.
       const baseColor = e.color || tinted;
-      const isAlt = e.slowFor > 0 || e.poisonFor > 0;
+      const isAlt = e.slowFor > 0 || e.poisonFor > 0 || e.corrodeFor > 0;
       const bodyTop = headY + 6 * s;
       const bodyBot = hipY + 2 * s;
       const bodyW = 4.2 * s;                          // slimmer torso so arms hang OUTSIDE it
